@@ -1,0 +1,4 @@
+INFO: [VRFC 10-2263] Analyzing Verilog file "C:/Users/sreej/OneDrive/Desktop/Trex/CS224-Project/CS224-Project/tb/tb_math_coproc.v" into library work
+INFO: [VRFC 10-311] analyzing module tb_math_coproc
+INFO: [VRFC 10-2263] Analyzing Verilog file "C:/Users/sreej/OneDrive/Desktop/Trex/CS224-Project/CS224-Project/src/math_coproc.v" into library work
+INFO: [VRFC 10-311] analyzing module math_coproc

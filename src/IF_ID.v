@@ -127,7 +127,7 @@ id_ex_reg u_id_ex (.clk(clk),.reset_n (reset),.stall(stall_read_i),
 	.src2_sel_o      	(src2_select_w),
 	.dest_reg_sel_o  	(dest_reg_sel_w),
 	.alu_op_o        	(alu_operation_w),
-	.illegal_inst_o  	(illegal_inst_w)
+	.illegal_inst_o  	(illegal_inst_w),
     
     .is_m_ext_i     (is_m_ext_detect),
     .is_mac_i       (is_mac_detect),
@@ -184,11 +184,11 @@ module id_ex_reg (
     output reg [4:0]  src2_sel_o,
     output reg [4:0]  dest_reg_sel_o,
     output reg [2:0]  alu_op_o,
-    output reg        illegal_inst_o
+    output reg        illegal_inst_o,
 
     output reg    is_m_ext_o,
     output reg    is_mac_o,
-    output reg    is_mvacc_o,
+    output reg    is_mvacc_o
 );
 
 always @(posedge clk or negedge reset_n) begin

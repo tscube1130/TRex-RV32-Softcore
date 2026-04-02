@@ -268,7 +268,7 @@ execute execute (
 
 	.is_m_ext       (is_m_ext_w),
     .is_mac         (is_mac_w),
-    .is_mvacc       (is_mvacc_w)
+    .is_mvacc       (is_mvacc_w),
 
     // -----------------
 	// FROM WB
