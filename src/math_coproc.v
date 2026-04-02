@@ -1,5 +1,4 @@
 `timescale 1ns/1ps
-`include "opcode.vh"
 
 module math_coproc (
     input  wire        clk,
@@ -21,6 +20,7 @@ module math_coproc (
     output wire        math_stall    // PLACEHOLDER: Will be used when we build the Divider!
 );
 
+`include "opcode.vh"
     // Default stall to 0 for now. The pipeline will only freeze when we build the DIV state machine.
     assign math_stall = 1'b0; 
 
