@@ -12,7 +12,7 @@ output [15:0] led
      
 ); 
 wire [31:0] pc_out;
-wire [15:0] pc_disp = pipe_u.pc[15:0]; 
+wire [15:0] pc_disp = pc_out[15:0]; 
 wire exception;
 	////////////////////////////////////////////////////////////
 	// Slow clock generator (clock divider)
@@ -51,6 +51,10 @@ end
 	assign inst_mem_is_valid = 1'b1;
 	assign dmem_write_valid  = 1'b1;
 	assign dmem_read_valid   = 1'b1;
+
+	wire dmem_re,dmem_we;
+	wire [31:0] dmem_raddr,dmem_waddr,dmem_wdata;
+	wire [3:0] dmem_wstrb;
 assign led = pc_disp;
 
 ////////////////////////////////////////////////////////////
@@ -61,10 +65,15 @@ pipe pipe_u (
 	.reset(reset),
 	.stall(1'b0),// stall is always 0
 	.exception(exception),
-
+     
 	.inst_mem_is_valid(inst_mem_is_valid),
 	.inst_mem_read_data(inst_mem_read_data),
-
+    .dmem_re(dmem_re),
+	.dmem_raddr(dmem_raddr),
+	.dmem_we           (dmem_we),
+    .dmem_waddr        (dmem_waddr),
+    .dmem_wdata        (dmem_wdata),
+    .dmem_wstrb        (dmem_wstrb),
 	.dmem_read_data_temp(dmem_read_data),
 	.dmem_write_valid(dmem_write_valid),
 	.dmem_read_valid(dmem_read_valid)
@@ -89,14 +98,14 @@ instr_mem IMEM (
 data_mem DMEM (
 	.clk(slow_clk),
 
-	.re(pipe_u.dmem_read_ready),
-	.raddr (pipe_u.dmem_read_address),   
+	.re(dmem_re),
+	.raddr (dmem_raddr),   
     .rdata (dmem_read_data),
 
-	.we    (pipe_u.dmem_write_ready),    
-    .waddr (pipe_u.dmem_write_address),  
-    .wdata (pipe_u.dmem_write_data),     
-    .wstrb (pipe_u.dmem_write_byte)
+	.we    (dmem_we),    
+    .waddr (dmem_waddr),  
+    .wdata (dmem_wdata),     
+    .wstrb (dmem_wstrb)
 );
 
 

@@ -52,3 +52,27 @@ localparam  [ 2: 0] ADD     = 3'b000,    // inst[30] == 0: ADD, inst[31] == 1: S
                     OR      = 3'b110,
                     AND     = 3'b111;
 
+// =================================================================
+// DSP / M-EXTENSION IDENTIFIERS (FUNC7)
+// These share the ARITHR opcode (7'b0110011)
+// =================================================================
+localparam [6:0] M_EXT   = 7'b0000001; // Standard RV32M Extension
+localparam [6:0] MAC_EXT = 7'b0000010; // Custom DSP Extension
+
+// =================================================================
+// RV32M FUNC3 DEFINITIONS (When FUNC7 == M_EXT)
+// =================================================================
+localparam [2:0] MUL    = 3'b000, // Lower 32 bits of Rs1 * Rs2
+                 MULH   = 3'b001, // Upper 32 bits (Signed x Signed)
+                 MULHSU = 3'b010, // Upper 32 bits (Signed x Unsigned)
+                 MULHU  = 3'b011, // Upper 32 bits (Unsigned x Unsigned)
+                 DIV    = 3'b100, // Rs1 / Rs2 (Signed)
+                 DIVU   = 3'b101, // Rs1 / Rs2 (Unsigned)
+                 REM    = 3'b110, // Remainder (Signed)
+                 REMU   = 3'b111; // Remainder (Unsigned)
+
+// =================================================================
+// CUSTOM MAC FUNC3 DEFINITIONS (When FUNC7 == MAC_EXT)
+// =================================================================
+localparam [2:0] MAC    = 3'b000, // Accumulator = Accumulator + (Rs1 * Rs2)
+                 MVACC  = 3'b001; // Rd = Accumulator
