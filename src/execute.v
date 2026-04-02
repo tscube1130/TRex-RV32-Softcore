@@ -20,6 +20,11 @@ module execute
 	input     	arithsubtype,
 	input     	mem_to_reg,
 	input     	stall_read,
+	// --- NEW COPROCESSOR INPUTS ---
+    input       is_m_ext,
+    input       is_mac,
+    input       is_mvacc,
+    // ------------------------------
 
 	input  [4:0]  dest_reg_sel,
 	input  [2:0]  alu_op,
@@ -217,7 +222,28 @@ always @(*) begin
     	default: ex_result = 'hx;
 	endcase
 end
+//////////////////////////////////////////////////////////////
+// MATH COPROCESSOR INSTANTIATION
+//////////////////////////////////////////////////////////////
+wire [31:0] math_result;
+wire        math_stall; 
 
+math_coproc u_math (
+    .clk            (clk),
+    .reset          (reset),
+    .rs1_data       (alu_operand1),
+    .rs2_data       (alu_operand2),
+    .mul_op         (alu_op),
+    .is_m_ext       (is_m_ext),
+    .is_mac         (is_mac),
+    .is_mvacc       (is_mvacc),
+    .pipeline_stall (branch_stall || stall_read),
+    .math_result    (math_result),
+    .math_stall     (math_stall)
+);
+
+// The Final MUX: Choose between the standard ALU or the Math Coprocessor
+wire [31:0] final_ex_result = (is_m_ext || is_mvacc) ? math_result : ex_result;
 
 ////////////////////////////////////////////////////////////// EX → WB pipeline register/////////////////////////////////////////
 
@@ -226,7 +252,7 @@ ex_mem_wb_reg u_ex_mem_wb (
 	.reset_n    	(reset),
 	.stall    	(stall_read),
 
-	.ex_result  	(ex_result),
+	.ex_result  	(final_ex_result),
 
 	.mem_write  	(mem_write && !branch_stall),//////
 	.alu_to_reg 	(alu | lui | jal | jalr | mem_to_reg),////////////////

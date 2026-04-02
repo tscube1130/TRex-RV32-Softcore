@@ -55,6 +55,9 @@
 	wire               	jalr;
 	wire               	branch;
 	reg               	stall_read;
+	wire        is_m_ext_w;
+    wire        is_mac_w;
+    wire        is_mvacc_w;
 	wire      	[31: 0] instruction;
 	wire      	[31: 0] reg_rdata2 ;
 	wire      	[31: 0] reg_rdata1;
@@ -154,7 +157,12 @@ IF_ID IF_ID_stage (
 	.dest_reg_sel_w 	(dest_reg_sel),
 	.alu_operation_w	(alu_operation),
 	.illegal_inst_w 	(illegal_inst),
-	.instruction_o  	(instruction) 
+	.instruction_o  	(instruction) ,
+
+	
+    .is_m_ext_w     (is_m_ext_w),
+    .is_mac_w       (is_mac_w),
+    .is_mvacc_w     (is_mvacc_w)
 );
 
 
@@ -257,6 +265,10 @@ execute execute (
     .dest_reg_sel      (dest_reg_sel),
     .alu_op            (alu_operation),
     .dmem_raddr        (write_address[1:0]),//2 bits read strobe 
+
+	.is_m_ext       (is_m_ext_w),
+    .is_mac         (is_mac_w),
+    .is_mvacc       (is_mvacc_w)
 
     // -----------------
 	// FROM WB
