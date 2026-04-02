@@ -30,6 +30,11 @@ module IF_ID
     output [4:0]  dest_reg_sel_w,
     output [2:0]  alu_operation_w,
     output        illegal_inst_w,
+
+    output        is_m_ext_w,
+    output        is_mac_w,
+    output        is_mvacc_w,
+
     output [31:0] instruction_o);
 //////////////// Including OPCODES ////////////////////////////
 `include "opcode.vh"
@@ -81,12 +86,17 @@ end
 
 // Generate control signals based on opcode
 // alu, lui, jal, jalr, branch, mem_write, mem_to_reg, arithsubtype
-
+// =================================================================
+// MATH COPROCESSOR DECODE LOGIC
+// =================================================================
+wire is_m_ext_detect = (instruction_i[`OPCODE] == ARITHR) && (instruction_i[31:25] == M_EXT);
+wire is_mac_detect   = (instruction_i[`OPCODE] == ARITHR) && (instruction_i[31:25] == MAC_EXT) && (instruction_i[`FUNC3] == MAC);
+wire is_mvacc_detect = (instruction_i[`OPCODE] == ARITHR) && (instruction_i[31:25] == MAC_EXT) && (instruction_i[`FUNC3] == MVACC);
 id_ex_reg u_id_ex (.clk(clk),.reset_n (reset),.stall(stall_read_i),
 // From ID
 	.immediate_i	(immediate),
 	.immediate_sel_i((instruction_i[`OPCODE] == JALR)  ||(instruction_i[`OPCODE] == LOAD)  ||(instruction_i[`OPCODE] == ARITHI) ),
-	.alu_i      	(instruction_i[`OPCODE] == ARITHI || instruction_i[`OPCODE] == ARITHR),
+	.alu_i      	(instruction_i[`OPCODE] == ARITHI || (instruction_i[`OPCODE] == ARITHR && !is_mac_detect)),
 	.lui_i      	(instruction_i[`OPCODE] == LUI),
 	.jal_i      	(instruction_i[`OPCODE] == JAL),
 	.jalr_i     	(instruction_i[`OPCODE] == JALR),
@@ -118,6 +128,13 @@ id_ex_reg u_id_ex (.clk(clk),.reset_n (reset),.stall(stall_read_i),
 	.dest_reg_sel_o  	(dest_reg_sel_w),
 	.alu_op_o        	(alu_operation_w),
 	.illegal_inst_o  	(illegal_inst_w)
+    
+    .is_m_ext_i     (is_m_ext_detect),
+    .is_mac_i       (is_mac_detect),
+    .is_mvacc_i     (is_mvacc_detect),
+    .is_m_ext_o     (is_m_ext_w),
+    .is_mac_o       (is_mac_w),
+    .is_mvacc_o     (is_mvacc_w)
 );
 endmodule
 
@@ -147,6 +164,10 @@ module id_ex_reg (
     input  [2:0]  alu_op_i,
     input         illegal_inst_i,
 
+    input         is_m_ext_i,
+    input         is_mac_i,
+    input         is_mvacc_i,
+
     // Outputs to EX
     output reg [31:0] execute_immediate_o,
     output reg        immediate_sel_o,
@@ -164,6 +185,10 @@ module id_ex_reg (
     output reg [4:0]  dest_reg_sel_o,
     output reg [2:0]  alu_op_o,
     output reg        illegal_inst_o
+
+    output reg    is_m_ext_o,
+    output reg    is_mac_o,
+    output reg    is_mvacc_o,
 );
 
 always @(posedge clk or negedge reset_n) begin
@@ -184,6 +209,9 @@ always @(posedge clk or negedge reset_n) begin
         dest_reg_sel_o      <= 5'h0;
         alu_op_o            <= 3'h0;
         illegal_inst_o      <= 1'b0;
+        is_m_ext_o          <= 1'b0;
+        is_mac_o            <= 1'b0;
+        is_mvacc_o          <= 1'b0;
     end
     else if (!stall) begin
         execute_immediate_o <= immediate_i;
@@ -202,6 +230,9 @@ always @(posedge clk or negedge reset_n) begin
         dest_reg_sel_o      <= dest_reg_sel_i;
         alu_op_o            <= alu_op_i;
         illegal_inst_o      <= illegal_inst_i;
+        is_m_ext_o          <= is_m_ext_i;
+        is_mac_o            <= is_mac_i;
+        is_mvacc_o          <= is_mvacc_i;
     end
 end
 
