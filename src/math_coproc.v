@@ -34,13 +34,13 @@ module math_coproc (
     wire signed [32:0] op2_ext = (mul_op == MULHU || mul_op == MULHSU) ? {1'b0, rs2_data} : {rs2_data[31], rs2_data};
 
     // Calculate the full 64-bit product instantly
-    wire signed [65:0] full_product = op1_ext * op2_ext;
+    (* use_dsp = "yes" *)wire signed [65:0] full_product = op1_ext * op2_ext;
 
     // =================================================================
     // 2. THE HIDDEN ACCUMULATOR (Synchronous)
     // =================================================================
-    
-    reg [31:0] mac_accumulator;
+   // Tell Vivado: "Do not build this out of standard logic gates! Use a DSP slice!"
+(* use_dsp = "yes" *) reg [31:0] mac_accumulator;
 
     always @(posedge clk or negedge reset) begin
         if (!reset) begin
