@@ -90,18 +90,19 @@ reg        div_sign_r;   // 1 = negate final remainder
 reg        div_is_rem;   // 1 = output remainder instead of quotient
 
 // math_stall is HIGH only while iterating — not during DONE (result is ready)
-assign math_stall = (div_state == DIV_RUNNING);
 
 // Detect edge cases combinationally (these bypass the FSM)
 wire div_by_zero     = (rs2_data == 32'd0);
 wire signed_overflow = (rs1_data == 32'h8000_0000) &&
                        (rs2_data == 32'hFFFF_FFFF) &&
                        (mul_op == DIV || mul_op == REM);
+wire div_start = is_div_op && !div_by_zero && !signed_overflow &&
+                 (div_state == DIV_IDLE) && !pipeline_stall;
+assign math_stall = (div_state == DIV_RUNNING)||div_start;
+
 
 // Start signal: fires for exactly 1 cycle when a new DIV enters EX
 // and there are no edge cases (edge cases are answered immediately)
-wire div_start = is_div_op && !div_by_zero && !signed_overflow &&
-                 (div_state == DIV_IDLE) && !pipeline_stall;
 
 always @(posedge clk or negedge reset) begin
     if (!reset) begin
