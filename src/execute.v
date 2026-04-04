@@ -255,7 +255,7 @@ ex_mem_wb_reg u_ex_mem_wb (
 	.ex_result  	(final_ex_result),
 
 	.mem_write  	(mem_write && !branch_stall),//////
-	.alu_to_reg 	(alu | lui | jal | jalr | mem_to_reg),////////////////
+	.alu_to_reg 	(alu | lui | jal | jalr | mem_to_reg| is_mvacc),////////////////
 	.dest_reg_sel   (dest_reg_sel),
 	.branch_taken   (branch_taken),
 	.mem_to_reg 	(mem_to_reg),

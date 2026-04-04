@@ -16,11 +16,20 @@
 	// interface of instruction Memory
 	input               	inst_mem_is_valid,
 	input       	[31: 0] inst_mem_read_data,
+	
+	output dmem_re,
+	output[31:0] dmem_raddr,
 	input       	[31: 0] dmem_read_data_temp,
+	output        dmem_we,
+    output [31:0] dmem_waddr,
+    output [31:0] dmem_wdata,
+    output [ 3:0] dmem_wstrb,
 	input               	dmem_write_valid,
 	input               	dmem_read_valid
+	,output [15:0] led_reg5
 );
-    
+	reg       	[31: 0] regs [31: 1];
+    assign led_reg5=regs[5][15:0];
 	//Declaring Wires and Registers
 
 	//Data Memory Wires
@@ -61,7 +70,6 @@
 	wire      	[31: 0] instruction;
 	wire      	[31: 0] reg_rdata2 ;
 	wire      	[31: 0] reg_rdata1;
-	reg       	[31: 0] regs [31: 1];
 
 	// PC
 
@@ -111,6 +119,12 @@ assign dmem_write_data          	= wb_write_data;	// assigning data to write
 assign dmem_write_byte          	= wb_write_byte;	// flag for writing the data bytes
 assign dmem_read_data           	= dmem_read_data_temp;  	// data read from the memory
 assign dmem_read_valid_checker  	= 1'b1;
+assign dmem_re    = dmem_read_ready;
+assign dmem_raddr = dmem_read_address;
+assign dmem_we    = dmem_write_ready;
+assign dmem_waddr = dmem_write_address;
+assign dmem_wdata = dmem_write_data;
+assign dmem_wstrb = dmem_write_byte;
 // -----------------------------------------------------//
 
 // instantiating Instruction fetch module -----------------------
@@ -158,9 +172,7 @@ IF_ID IF_ID_stage (
 	.alu_operation_w	(alu_operation),
 	.illegal_inst_w 	(illegal_inst),
 	.instruction_o  	(instruction) ,
-
-	
-    .is_m_ext_w     (is_m_ext_w),
+	.is_m_ext_w     (is_m_ext_w),
     .is_mac_w       (is_mac_w),
     .is_mvacc_w     (is_mvacc_w)
 );
