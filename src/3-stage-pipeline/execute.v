@@ -20,6 +20,11 @@ module execute
 	input     	arithsubtype,
 	input     	mem_to_reg,
 	input     	stall_read,
+	// --- COPROCESSOR INPUTS ---
+    input       is_m_ext,
+    input       is_mac,
+    input       is_mvacc,
+    // --------------------------
 
 	input  [4:0]  dest_reg_sel,
 	input  [2:0]  alu_op,
@@ -37,6 +42,9 @@ module execute
 
 	output reg [31:0] next_pc,
 	output reg    	branch_taken,
+
+    // DIV stall — fed back to pipeline.v to freeze the whole pipeline
+    output        div_stall,
 
 	// -----------------------------  // EX → WB	// -----------------------------
 	output [31:0] wb_result,
@@ -61,31 +69,16 @@ wire [32:0] ex_result_subu;
 
 ////////////////////////////////////////////////////////////// Operand selection///////////////////////////////////////////////////////
 
-
-// Select ALU operands
-// - The first operand must come from the first value read from the register file
-// - The second operand must come from the immediate when immediate selection is enabled
-// - Otherwise, the second operand must come from the second value read from the register file
-
 assign alu_operand1 = reg_rdata1;
-assign alu_operand2 = immediate_sel
-                    	? execute_imm:reg_rdata2;
+assign alu_operand2 = immediate_sel ? execute_imm : reg_rdata2;
 
 ////////////////////////////////////////////////////////////// Subtractions////////////////////////////////////////////////////////////
-
-
-
-// Generate subtraction results required for branch comparison
-// - One result (ex_result_subs) must treat both operands as signed values
-// - Another result (ex_result_subu) must treat both operands as unsigned values
-// - The results must be wide enough to capture the sign/borrow bit
-// - These results will be used later to evaluate branch conditions
 
 assign ex_result_subs =
 	{alu_operand1[31], alu_operand1} -
 	{alu_operand2[31], alu_operand2};
 
-assign ex_result_subu = {1'b1,alu_operand1} - {1'b0,alu_operand2};
+assign ex_result_subu = {1'b1, alu_operand1} - {1'b0, alu_operand2};
 
 ////////////////////////////////////////////////////////////// Address & branch stall////////////////////////////////////////
 
@@ -94,142 +87,126 @@ assign branch_stall  = wb_branch_nxt_i || wb_branch_i;
 
 ////////////////////////////////////////////////////////////// Next PC logic////////////////////////////////////////////////////////////
 
-
-
-// Compute the next program counter and branch decision
-
-// - Default next PC advances to the next sequential instruction
-// - For jump instructions:
-// 	* JAL computes the target using the current PC and an immediate
-// 	* JALR computes the target using a register value (first read) and an immediate
-// - For branch instructions:
-// 	* Evaluate the branch condition using comparison/subtraction results
-// 	* If the condition is satisfied, jump to the branch target
-// 	* Otherwise, continue sequential execution
-// - Branch resolution must be suppressed when a branch stall is active
-
 always @(*) begin
     next_pc = fetch_pc + 4;
-    branch_taken = !branch_stall; 
+    branch_taken = !branch_stall;
 
     case (1'b1)
         jal  : next_pc = pc + execute_imm;
-        jalr : next_pc = (alu_operand1 + execute_imm) & ~32'h1; 
+        jalr : next_pc = (alu_operand1 + execute_imm) & ~32'h1;
 
         branch: begin
             case (alu_op)
-                BEQ:  begin
-                    next_pc = (ex_result_subs == 0)
-                            ? pc + execute_imm
-                            : fetch_pc + 4;
-                    if (ex_result_subs != 0)
-                        branch_taken = 1'b0;
+                BEQ: begin
+                    next_pc = (ex_result_subs == 0) ? pc + execute_imm : fetch_pc + 4;
+                    if (ex_result_subs != 0) branch_taken = 1'b0;
                 end
-                BNE:  begin
-                    next_pc = (ex_result_subs != 0)
-                            ? pc + execute_imm
-                            : fetch_pc + 4;
-                    if (ex_result_subs == 0)
-                        branch_taken = 1'b0;
+                BNE: begin
+                    next_pc = (ex_result_subs != 0) ? pc + execute_imm : fetch_pc + 4;
+                    if (ex_result_subs == 0) branch_taken = 1'b0;
                 end
-
-                BLT:  begin
-                    next_pc = ex_result_subs[32]
-                            ? pc + execute_imm
-                            : fetch_pc + 4;
-                    if (!ex_result_subs[32])
-                        branch_taken = 1'b0;
+                BLT: begin
+                    next_pc = ex_result_subs[32] ? pc + execute_imm : fetch_pc + 4;
+                    if (!ex_result_subs[32]) branch_taken = 1'b0;
                 end
-                BGE:  begin
-                    next_pc = !ex_result_subs[32]
-                            ? pc + execute_imm
-                            : fetch_pc + 4;
-                    if (ex_result_subs[32])
-                        branch_taken = 1'b0;
+                BGE: begin
+                    next_pc = !ex_result_subs[32] ? pc + execute_imm : fetch_pc + 4;
+                    if (ex_result_subs[32]) branch_taken = 1'b0;
                 end
                 BLTU: begin
-                    next_pc = !ex_result_subu[32]
-                            ? pc + execute_imm
-                            : fetch_pc + 4;
-                    if (ex_result_subu[32])
-                        branch_taken = 1'b0;
+                    next_pc = !ex_result_subu[32] ? pc + execute_imm : fetch_pc + 4;
+                    if (ex_result_subu[32]) branch_taken = 1'b0;
                 end
                 BGEU: begin
-                    next_pc = ex_result_subu[32]
-                            ? pc + execute_imm
-                            : fetch_pc + 4;
-                    if (!ex_result_subu[32])
-                        branch_taken = 1'b0;
+                    next_pc = ex_result_subu[32] ? pc + execute_imm : fetch_pc + 4;
+                    if (!ex_result_subu[32]) branch_taken = 1'b0;
                 end
-                default: begin 
-                    next_pc = fetch_pc+4; 
-                    branch_taken = 1'b0;  
+                default: begin
+                    next_pc = fetch_pc + 4;
+                    branch_taken = 1'b0;
                 end
             endcase
         end
 
-        default: begin       
+        default: begin
             next_pc      = fetch_pc + 4;
-            branch_taken = 1'b0; 
+            branch_taken = 1'b0;
         end
     endcase
 end
 
 ////////////////////////////////////////////////////////////// ALU result logic////////////////////////////////////////////////////////////
 
-
-// Generate the execute-stage result (ex_result)
-
-// - For store instructions, forward the value that will be written to memory
-// - For jump instructions (JAL/JALR), produce the return address (PC + 4)
-// - LUI must place the immediate value directly into the destination register
-// - For ALU instructions, compute the result based on the decoded ALU operation
-// - The arithmetic subtype signal selects between related operations
-
-
 always @(*) begin
 	case (1'b1)
-    	mem_write: ex_result = alu_operand2;
-    	jal,
-    	jalr:  	ex_result = pc + 4;
-    	lui:   	ex_result = execute_imm;  
+    	mem_write : ex_result = alu_operand2;
+    	jal, jalr : ex_result = pc + 4;
+    	lui       : ex_result = execute_imm;
 
     	alu: begin
         	case (alu_op)
-            	ADD : ex_result =
-                  	arithsubtype
-                  	? alu_operand1 - alu_operand2
-                  	: alu_operand1 + alu_operand2;
-            	SLL : ex_result=alu_operand1<<alu_operand2[4:0];
+            	ADD : ex_result = arithsubtype
+                      	? alu_operand1 - alu_operand2
+                      	: alu_operand1 + alu_operand2;
+            	SLL : ex_result = alu_operand1 << alu_operand2[4:0];
             	SLT : ex_result = ex_result_subs[32];
-            	SLTU: ex_result= !ex_result_subu[32]; 
-            	XOR : ex_result = alu_operand1^alu_operand2;
-            	SR  : ex_result =
-                  	arithsubtype
-                  	? $signed(alu_operand1) >>> alu_operand2[4:0]
-                  	: alu_operand1 >> alu_operand2[4:0];
+            	SLTU: ex_result = !ex_result_subu[32];
+            	XOR : ex_result = alu_operand1 ^ alu_operand2;
+            	SR  : ex_result = arithsubtype
+                      	? $signed(alu_operand1) >>> alu_operand2[4:0]
+                      	: alu_operand1 >> alu_operand2[4:0];
             	OR  : ex_result = alu_operand1 | alu_operand2;
             	AND : ex_result = alu_operand1 & alu_operand2;
             	default: ex_result = 'hx;
-        	endcase    
+        	endcase
     	end
 
     	default: ex_result = 'hx;
 	endcase
 end
 
+//////////////////////////////////////////////////////////////
+// MATH COPROCESSOR INSTANTIATION
+//////////////////////////////////////////////////////////////
+wire [31:0] math_result;
+wire        math_stall;
+
+math_coproc u_math (
+    .clk            (clk),
+    .reset          (reset),
+    .rs1_data       (alu_operand1),
+    .rs2_data       (alu_operand2),
+    .mul_op         (alu_op),
+    .is_m_ext       (is_m_ext),
+    .is_mac         (is_mac),
+    .is_mvacc       (is_mvacc),
+    // pipeline_stall prevents MAC accumulator from updating spuriously.
+    // We pass the full freeze condition: branch stall OR external stall OR div stall.
+    // math_stall itself (div busy) does NOT need to be in this term —
+    // the div FSM runs on every clock regardless; it self-governs via its state.
+    .pipeline_stall (branch_stall || stall_read),
+    .math_result    (math_result),
+    .math_stall     (math_stall)
+);
+
+// Expose div busy to pipeline.v so it can freeze the whole pipeline
+assign div_stall = math_stall;
+
+// Final result mux: math coprocessor wins for M-ext and custom instructions
+wire [31:0] final_ex_result = (is_m_ext || is_mvacc) ? math_result : ex_result;
 
 ////////////////////////////////////////////////////////////// EX → WB pipeline register/////////////////////////////////////////
 
 ex_mem_wb_reg u_ex_mem_wb (
 	.clk        	(clk),
 	.reset_n    	(reset),
-	.stall    	(stall_read),
+    // stall_read here already includes div_stall (via pipeline_freeze in pipeline.v)
+	.stall    	    (stall_read|div_stall),
 
-	.ex_result  	(ex_result),
+	.ex_result  	(final_ex_result),
 
-	.mem_write  	(mem_write && !branch_stall),//////
-	.alu_to_reg 	(alu | lui | jal | jalr | mem_to_reg),////////////////
+	.mem_write  	(mem_write && !branch_stall),
+	.alu_to_reg 	(alu | lui | jal | jalr | mem_to_reg | is_mvacc),
 	.dest_reg_sel   (dest_reg_sel),
 	.branch_taken   (branch_taken),
 	.mem_to_reg 	(mem_to_reg),
@@ -260,7 +237,7 @@ module ex_mem_wb_reg (
 
 	// Control inputs from EX/MEM
 	input     	mem_write,
-	input     	alu_to_reg, 
+	input     	alu_to_reg,
 	input  [4:0]  dest_reg_sel,
 	input     	branch_taken,
 	input     	mem_to_reg,
@@ -279,37 +256,29 @@ module ex_mem_wb_reg (
 	output reg [2:0]  ex_mem_alu_operation
 );
 
-// EX/MEM → WB pipeline register
-
-// - Store all execute-stage data and control signals on the rising clock edge
-// - On reset, clear all stored values to a safe default
-// - When a stall is asserted, prevent unintended updates
-// - All outputs must hold their previous values unless explicitly updated
-
 always @(posedge clk or negedge reset_n) begin
 	if (!reset_n) begin
-    	ex_mem_result     	<= 32'h0;
-    	ex_mem_mem_write  	<= 1'b0;
-    	ex_mem_alu_to_reg 	<= 1'b0;
-    	ex_mem_dest_reg_sel   <= 5'h0;
-    	ex_mem_branch     	<= 1'b0;
-    	ex_mem_branch_nxt 	<= 1'b0;
-    	ex_mem_mem_to_reg 	<= 1'b0;
-    	ex_mem_read_address   <= 2'h0;
-    	ex_mem_alu_operation  <= 3'h0;
+    	ex_mem_result        <= 32'h0;
+    	ex_mem_mem_write     <= 1'b0;
+    	ex_mem_alu_to_reg    <= 1'b0;
+    	ex_mem_dest_reg_sel  <= 5'h0;
+    	ex_mem_branch        <= 1'b0;
+    	ex_mem_branch_nxt    <= 1'b0;
+    	ex_mem_mem_to_reg    <= 1'b0;
+    	ex_mem_read_address  <= 2'h0;
+    	ex_mem_alu_operation <= 3'h0;
 	end
 	else if (!stall) begin
-    	ex_mem_result     	<= ex_result ;
-    	ex_mem_mem_write  	<= mem_write;
-    	ex_mem_alu_to_reg 	<= alu_to_reg;
-    	ex_mem_dest_reg_sel   <=dest_reg_sel; 
-    	ex_mem_branch     	<=branch_taken;
-    	ex_mem_branch_nxt 	<= ex_mem_branch;   
-    	ex_mem_mem_to_reg 	<= mem_to_reg;
-    	ex_mem_read_address   <= read_address;
-    	ex_mem_alu_operation  <= alu_operation;
+    	ex_mem_result        <= ex_result;
+    	ex_mem_mem_write     <= mem_write;
+    	ex_mem_alu_to_reg    <= alu_to_reg;
+    	ex_mem_dest_reg_sel  <= dest_reg_sel;
+    	ex_mem_branch        <= branch_taken;
+    	ex_mem_branch_nxt    <= ex_mem_branch;
+    	ex_mem_mem_to_reg    <= mem_to_reg;
+    	ex_mem_read_address  <= read_address;
+    	ex_mem_alu_operation <= alu_operation;
 	end
-	
 end
 
 endmodule
