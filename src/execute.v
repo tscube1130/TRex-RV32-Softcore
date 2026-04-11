@@ -201,7 +201,7 @@ ex_mem_wb_reg u_ex_mem_wb (
 	.clk        	(clk),
 	.reset_n    	(reset),
     // stall_read here already includes div_stall (via pipeline_freeze in pipeline.v)
-	.stall    	    (stall_read),
+	.stall    	    (stall_read|div_stall),
 
 	.ex_result  	(final_ex_result),
 

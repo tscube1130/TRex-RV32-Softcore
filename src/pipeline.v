@@ -148,6 +148,26 @@ assign dmem_wdata = dmem_write_data;
 assign dmem_wstrb = dmem_write_byte;
 // -----------------------------------------------------//
 
+// [NEW] Instruction Rescue Buffer
+// Catches dropped instructions caused by block RAM latency during multi-cycle stalls
+reg [31:0] rescued_inst;
+reg        use_rescued_inst;
+
+always @(posedge clk or negedge reset) begin
+    if (!reset) begin
+        rescued_inst <= 32'h00000013; // NOP
+        use_rescued_inst <= 1'b0;
+    end else if (div_stall_w && !use_rescued_inst) begin
+        // The exact moment the pipeline freezes, snatch the current RAM output
+        rescued_inst <= inst_mem_read_data;
+        use_rescued_inst <= 1'b1;
+    end else if (!div_stall_w) begin
+        use_rescued_inst <= 1'b0;
+    end
+end
+
+// Feed the rescued instruction to the Decode stage if we are recovering from a stall
+wire [31:0] safe_inst_mem_data = use_rescued_inst ? rescued_inst : inst_mem_read_data;
 // instantiating Instruction fetch module -----------------------
 IF_ID IF_ID_stage (
 	.clk            	(clk),
@@ -157,10 +177,10 @@ IF_ID IF_ID_stage (
 
 	// Instruction memory interface
 	.inst_mem_is_valid  (inst_mem_is_valid),
-	.inst_mem_read_data (inst_mem_read_data),
+	.inst_mem_read_data (safe_inst_mem_read_data),
 
 	// [FREEZE] Use pipeline_freeze so a running DIV also freezes the ID stage
-	.stall_read_i   	(pipeline_freeze),   // ← was stall_read
+	.stall_read_i   	(stall_read), 
 	.inst_fetch_pc  	(inst_fetch_pc),
 	.instruction_i  	(instruction),
 
