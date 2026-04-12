@@ -1,56 +1,65 @@
 `timescale 1ns / 1ps
 // =============================================================================
-// top_fpga.v — FPGA Top-Level Module (Goal System)
-// Project T-Rex: Hardware-Accelerated Chrome Dino
+// top_fpga.v — Project T-Rex — Board Top Module for Nexys A7-100T
 // =============================================================================
-// Integrates:
-//   1. 3-stage RV32IM pipeline (pipe)
-//   2. Instruction memory (instr_mem) and Data memory (data_mem)
-//   3. MMIO decoder (mmio_decoder) — routes CPU memory ops to peripherals
-//   4. Peripherals: lfsr16, debouncer ×2, led_ctrl, seg7_mux
+// Wires together:
+//   1. pipe           — 3-stage RV32IM pipeline (slow_clk)
+//   2. instr_mem      — instruction BRAM (slow_clk)
+//   3. data_mem       — data BRAM (slow_clk), gated by mmio_decoder
+//   4. mmio_decoder   — MMIO address router (slow_clk)
+//   5. seg7_mux       — 8-digit 7-seg TDM driver (FAST clk, 100 MHz)
+//   6. lfsr16         — 16-bit LFSR for cactus RNG (FAST clk, 100 MHz)
+//   7. debouncer (x2) — sticky button debouncers (FAST clk, 100 MHz)
+//   8. led_ctrl       — LED register (slow_clk)
 //
 // Clock domains:
-//   clk       — 100 MHz board clock  (peripherals, seg7, debounce, LFSR)
-//   slow_clk  — CPU pipeline clock   (divided from clk via clk_div)
+//   clk      — 100 MHz board oscillator (seg7_mux, lfsr16, debouncer)
+//   slow_clk — ~1 Hz divided clock (pipe, IMEM, DMEM, mmio_decoder, led_ctrl)
 //
-// Reset: active-LOW btnCpuReset on Nexys A7
-//
-// Maintained by: Surbhi Kumari (FPGA & Hardware Integration)
+// Reset polarity:
+//   Board BTNC is active-HIGH on press.
+//   Pipeline and all peripherals use active-LOW reset.
+//   Inversion: reset_n = ~reset
 // =============================================================================
 
 module top_fpga #(
-    parameter IMEMSIZE  = 4096,
-    parameter DMEMSIZE  = 4096,
-    // CPU clock divider: 100 MHz / (2 × DIV_COUNT) → CPU clock
-    // DIV_COUNT = 50_000_000 → 1 Hz (slow debug); set lower for faster execution
-    parameter DIV_COUNT = 26'd50_000_000
+    parameter IMEMSIZE = 4096,
+    parameter DMEMSIZE = 4096
 )(
-    input  wire        clk,             // 100 MHz board clock
-    input  wire        reset,           // active-LOW (btnCpuReset)
-    input  wire        btn_jump,        // BTNC — single jump
-    input  wire        btn_double_jump, // BTNU — double jump
+    input  wire        clk,             // 100 MHz board oscillator
+    input  wire        reset,           // BTNC — active-HIGH on board
 
-    // 7-segment display (active-LOW)
-    output wire [6:0]  seg,
-    output wire [7:0]  an,
-    output wire        dp,
+    // Game buttons
+    input  wire        sw_jump,         // BTNU — single jump
+    input  wire        sw_double_jump,  // BTNL — double jump
 
-    // LEDs (active-HIGH)
-    output wire [15:0] led
+    // 7-segment display
+    output wire [6:0]  seg,             // cathodes (active-LOW)
+    output wire [7:0]  an,              // anodes   (active-LOW)
+    output wire        dp,              // decimal point
+
+    // LEDs
+    output wire [15:0] led              // active-HIGH
 );
 
     // =========================================================================
-    // Clock Divider — 100 MHz → slow_clk for CPU pipeline
+    // Reset polarity inversion
+    // Board button is active-HIGH; pipeline and peripherals need active-LOW
+    // =========================================================================
+    wire reset_n = ~reset;
+
+    // =========================================================================
+    // Clock divider: 100 MHz → ~1 Hz (game tick rate)
     // =========================================================================
     reg [25:0] clk_cnt;
     reg        slow_clk;
 
-    always @(posedge clk or negedge reset) begin
-        if (!reset) begin
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
             clk_cnt  <= 26'd0;
             slow_clk <= 1'b0;
         end else begin
-            if (clk_cnt == DIV_COUNT - 1) begin
+            if (clk_cnt == 26'd49_999_999) begin
                 clk_cnt  <= 26'd0;
                 slow_clk <= ~slow_clk;
             end else begin
@@ -60,152 +69,69 @@ module top_fpga #(
     end
 
     // =========================================================================
-    // Pipeline ↔ Memory interface wires
+    // PIPE ↔ MEMORY WIRES
     // =========================================================================
     wire [31:0] inst_mem_read_data;
-    wire        inst_mem_is_valid;
-    wire [31:0] pc_out;
-    wire        exception;
+    wire        inst_mem_is_valid = 1'b1;
 
-    wire        dmem_re,   dmem_we;
+    wire [31:0] bram_rdata;              // raw BRAM read data
+    wire [31:0] dmem_rdata_to_pipe;      // muxed: BRAM or MMIO
+    wire        dmem_write_valid = 1'b1;
+    wire        dmem_read_valid  = 1'b1;
+
+    wire        exception;
+    wire [31:0] pc_out;
+    wire [15:0] led_reg5;
+
+    wire        dmem_re, dmem_we;
     wire [31:0] dmem_raddr, dmem_waddr, dmem_wdata;
     wire [3:0]  dmem_wstrb;
-    wire [31:0] dmem_read_data;      // mux output back to pipeline
-
-    // Memory validity — always ready (synchronous BRAM, 1-cycle latency)
-    assign inst_mem_is_valid = 1'b1;
 
     // =========================================================================
-    // MMIO Decoder
+    // MMIO DECODER WIRES
     // =========================================================================
-    // BRAM-gated signals
     wire        dmem_re_bram, dmem_we_bram;
-    // MMIO read path
     wire [31:0] mmio_rdata;
     wire        mmio_sel;
-    // BRAM read data
-    wire [31:0] bram_rdata;
-    // Peripheral control
     wire        jump_clear, dbl_jump_clear;
     wire [15:0] led_wdata;
     wire        led_we;
     wire [31:0] seg_data0, seg_data1;
-    // Peripheral outputs → decoder
     wire [15:0] lfsr_out;
     wire        jump_sticky, dbl_jump_sticky;
-
-    mmio_decoder mmio_dec (
-        .clk             (clk),
-        .reset           (reset),
-        // From pipeline
-        .dmem_re         (dmem_re),
-        .dmem_raddr      (dmem_raddr),
-        .dmem_we         (dmem_we),
-        .dmem_waddr      (dmem_waddr),
-        .dmem_wdata      (dmem_wdata),
-        // To BRAM
-        .dmem_re_bram    (dmem_re_bram),
-        .dmem_we_bram    (dmem_we_bram),
-        // Read data back to pipeline
-        .mmio_rdata_o    (mmio_rdata),
-        .mmio_sel        (mmio_sel),
-        // Peripheral control
-        .jump_clear      (jump_clear),
-        .dbl_jump_clear  (dbl_jump_clear),
-        .led_wdata       (led_wdata),
-        .led_we          (led_we),
-        .seg_data0       (seg_data0),
-        .seg_data1       (seg_data1),
-        // Peripheral inputs
-        .lfsr_out        (lfsr_out),
-        .jump_sticky     (jump_sticky),
-        .dbl_jump_sticky (dbl_jump_sticky)
-    );
-
-    // Read data mux: MMIO takes priority over BRAM
-    assign dmem_read_data = mmio_sel ? mmio_rdata : bram_rdata;
+    wire        jump_stable, dbl_jump_stable;   // from debouncers (unused here)
 
     // =========================================================================
-    // Peripheral Instantiations
+    // MMIO READ DATA MUX
+    // When CPU reads an MMIO address, return MMIO data instead of BRAM
     // =========================================================================
-
-    // -- LFSR (runs on fast clock for maximum entropy) ----------------------
-    lfsr16 lfsr_inst (
-        .clk      (clk),
-        .reset    (reset),
-        .lfsr_out (lfsr_out)
-    );
-
-    // -- Debouncer: single jump (BTNC) -------------------------------------
-    debouncer #(.SETTLE_CYCLES(1_000_000)) dbnc_jump (
-        .clk        (clk),
-        .reset      (reset),
-        .btn_raw    (btn_jump),
-        .clear      (jump_clear),
-        .btn_stable (),            // unused — only sticky needed by game
-        .btn_sticky (jump_sticky)
-    );
-
-    // -- Debouncer: double jump (BTNU) -------------------------------------
-    debouncer #(.SETTLE_CYCLES(1_000_000)) dbnc_dbl (
-        .clk        (clk),
-        .reset      (reset),
-        .btn_raw    (btn_double_jump),
-        .clear      (dbl_jump_clear),
-        .btn_stable (),
-        .btn_sticky (dbl_jump_sticky)
-    );
-
-    // -- LED controller ----------------------------------------------------
-    led_ctrl led_ctrl_inst (
-        .clk     (clk),
-        .reset   (reset),
-        .we      (led_we),
-        .wdata   (led_wdata),
-        .led_out (led)
-    );
-
-    // -- 7-Segment multiplexer (fast clock for flicker-free refresh) -------
-    seg7_mux #(.REFRESH_COUNT(100_000)) seg7_inst (
-        .clk       (clk),
-        .reset     (reset),
-        .seg_data0 (seg_data0),
-        .seg_data1 (seg_data1),
-        .seg       (seg),
-        .an        (an),
-        .dp        (dp)
-    );
+    assign dmem_rdata_to_pipe = mmio_sel ? mmio_rdata : bram_rdata;
 
     // =========================================================================
-    // Pipeline CPU (runs on slow_clk)
+    // PIPELINE CPU (clocked on slow_clk for game-speed execution)
     // =========================================================================
-    wire        math_stall;   // from math_coproc → hazard_unit → pipeline
-    wire        stall_out;    // combined stall to pipeline
-
     pipe pipe_u (
-        .clk                  (slow_clk),
-        .reset                (reset),
-        .stall                (stall_out),
-        .exception            (exception),
-        .inst_mem_is_valid    (inst_mem_is_valid),
-        .inst_mem_read_data   (inst_mem_read_data),
-        .dmem_re              (dmem_re),
-        .dmem_raddr           (dmem_raddr),
-        .dmem_we              (dmem_we),
-        .dmem_waddr           (dmem_waddr),
-        .dmem_wdata           (dmem_wdata),
-        .dmem_wstrb           (dmem_wstrb),
-        .dmem_read_data_temp  (dmem_read_data),
-        .dmem_write_valid     (1'b1),
-        .dmem_read_valid      (1'b1),
-        .pc_out               (pc_out)
+        .clk                (slow_clk),
+        .reset              (reset_n),
+        .stall              (1'b0),
+        .exception          (exception),
+        .pc_out             (pc_out),
+        .inst_mem_is_valid  (inst_mem_is_valid),
+        .inst_mem_read_data (inst_mem_read_data),
+        .dmem_read_data_temp(dmem_rdata_to_pipe),
+        .dmem_re            (dmem_re),
+        .dmem_raddr         (dmem_raddr),
+        .dmem_we            (dmem_we),
+        .dmem_waddr         (dmem_waddr),
+        .dmem_wdata         (dmem_wdata),
+        .dmem_wstrb         (dmem_wstrb),
+        .dmem_write_valid   (dmem_write_valid),
+        .dmem_read_valid    (dmem_read_valid),
+        .led_reg5           (led_reg5)
     );
 
-    // stall_out: driven by hazard_unit; tie low until hazard_unit integrated
-    assign stall_out = 1'b0;
-
     // =========================================================================
-    // Instruction Memory (BRAM, slow_clk domain)
+    // INSTRUCTION MEMORY (clocked on slow_clk)
     // =========================================================================
     instr_mem IMEM (
         .clk   (slow_clk),
@@ -214,7 +140,8 @@ module top_fpga #(
     );
 
     // =========================================================================
-    // Data Memory (BRAM, slow_clk domain — MMIO-gated)
+    // DATA MEMORY — BRAM (clocked on slow_clk)
+    // Read/write gated by mmio_decoder so MMIO addresses don't hit BRAM
     // =========================================================================
     data_mem DMEM (
         .clk   (slow_clk),
@@ -227,5 +154,91 @@ module top_fpga #(
         .wstrb (dmem_wstrb)
     );
 
-endmodule
+    // =========================================================================
+    // MMIO DECODER (clocked on slow_clk — same domain as pipeline)
+    // Routes addresses >= 0x2000 to peripherals instead of BRAM
+    // =========================================================================
+    mmio_decoder u_mmio (
+        .clk              (slow_clk),
+        .reset            (reset_n),
+        .dmem_re          (dmem_re),
+        .dmem_raddr       (dmem_raddr),
+        .dmem_we          (dmem_we),
+        .dmem_waddr       (dmem_waddr),
+        .dmem_wdata       (dmem_wdata),
+        .dmem_wstrb       (dmem_wstrb),
+        .dmem_write_valid (dmem_write_valid),
+        .dmem_re_bram     (dmem_re_bram),
+        .dmem_we_bram     (dmem_we_bram),
+        .mmio_rdata_o     (mmio_rdata),
+        .mmio_sel         (mmio_sel),
+        .jump_clear       (jump_clear),
+        .dbl_jump_clear   (dbl_jump_clear),
+        .led_wdata        (led_wdata),
+        .led_we           (led_we),
+        .seg_data0        (seg_data0),
+        .seg_data1        (seg_data1),
+        .lfsr_out         (lfsr_out),
+        .jump_sticky      (jump_sticky),
+        .dbl_jump_sticky  (dbl_jump_sticky)
+    );
 
+    // =========================================================================
+    // 7-SEGMENT DISPLAY MUX (clocked on FAST 100 MHz for flicker-free TDM)
+    // =========================================================================
+    seg7_mux u_seg7 (
+        .clk       (clk),              // FAST clock
+        .reset     (reset_n),
+        .seg_data0 (seg_data0),
+        .seg_data1 (seg_data1),
+        .seg       (seg),
+        .an        (an),
+        .dp        (dp)
+    );
+
+    // =========================================================================
+    // LFSR — free-running RNG on fast clock (read by CPU via MMIO_LFSR_R)
+    // =========================================================================
+    lfsr16 u_lfsr (
+        .clk      (clk),               // FAST clock
+        .reset    (reset_n),
+        .lfsr_out (lfsr_out)
+    );
+
+    // =========================================================================
+    // DEBOUNCER — single jump button (BTNU)
+    // Runs on fast clock for proper 10 ms debounce timing
+    // =========================================================================
+    debouncer u_debounce_jump (
+        .clk        (clk),             // FAST clock
+        .reset      (reset_n),
+        .btn_raw    (sw_jump),
+        .clear      (jump_clear),
+        .btn_stable (jump_stable),
+        .btn_sticky (jump_sticky)
+    );
+
+    // =========================================================================
+    // DEBOUNCER — double jump button (BTNL)
+    // =========================================================================
+    debouncer u_debounce_dbl (
+        .clk        (clk),             // FAST clock
+        .reset      (reset_n),
+        .btn_raw    (sw_double_jump),
+        .clear      (dbl_jump_clear),
+        .btn_stable (dbl_jump_stable),
+        .btn_sticky (dbl_jump_sticky)
+    );
+
+    // =========================================================================
+    // LED CONTROLLER (clocked on slow_clk — same domain as MMIO writes)
+    // =========================================================================
+    led_ctrl u_led (
+        .clk    (slow_clk),
+        .reset  (reset_n),
+        .we     (led_we),
+        .wdata  (led_wdata),
+        .led_out(led)
+    );
+
+endmodule
