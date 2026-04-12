@@ -177,7 +177,7 @@ IF_ID IF_ID_stage (
 
 	// Instruction memory interface
 	.inst_mem_is_valid  (inst_mem_is_valid),
-	.inst_mem_read_data (safe_inst_mem_read_data),
+	.inst_mem_read_data (safe_inst_mem_data),
 
 	// [FREEZE] Use pipeline_freeze so a running DIV also freezes the ID stage
 	.stall_read_i   	(stall_read), 
