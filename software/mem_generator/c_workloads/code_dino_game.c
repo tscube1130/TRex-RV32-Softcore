@@ -17,8 +17,10 @@
 #define SPAWN_CHECK_FRAMES  6u
 #define SPAWN_CHANCE_MASK   0x7u
 #define OBSTACLE_START_X    16u
+#define OBSTACLE_HIT_X      1u
 #define SCORE_MAX           99999999u
 #define SCORE_TICK_FRAMES   4u
+#define LED_GAME_OVER       0xFFFFu
 
 static volatile unsigned int game_debug_sink;
 
@@ -28,6 +30,15 @@ static void wait_for_next_frame(void)
 
     for (delay = 0u; delay < FRAME_DELAY_CYCLES; delay = delay + 1u) {
         /* Busy-wait frame timer for the simple bare-metal game loop. */
+    }
+}
+
+static void halt_on_game_over(void)
+{
+    write_leds(LED_GAME_OVER);
+
+    for (;;) {
+        /* Trap here so the game-over LED pattern stays visible. */
     }
 }
 
@@ -45,6 +56,7 @@ int main(void)
     unsigned int obstacle_x = 0u;
     unsigned int score = 0u;
     unsigned int score_tick_timer = SCORE_TICK_FRAMES;
+    unsigned int crash = 0u;
 
     for (;;) {
         wait_for_next_frame();
@@ -104,6 +116,16 @@ int main(void)
             }
         }
 
+        if ((obstacle_active != 0u) &&
+            (obstacle_x <= OBSTACLE_HIT_X) &&
+            (player_state == PLAYER_GROUNDED)) {
+            crash = 1u;
+        }
+
+        if (crash != 0u) {
+            halt_on_game_over();
+        }
+
         if (score_tick_timer > 0u) {
             score_tick_timer = score_tick_timer - 1u;
         } else {
@@ -119,6 +141,7 @@ int main(void)
         write_score(score);
 
         game_debug_sink = frame_count + player_state + air_time_remaining
-                        + obstacle_active + obstacle_type + obstacle_x + score;
+                        + obstacle_active + obstacle_type + obstacle_x + score
+                        + crash;
     }
 }
