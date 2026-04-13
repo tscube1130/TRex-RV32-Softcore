@@ -4,10 +4,39 @@
 // Drives the Nexys A7's 8 on-board 7-segment digits via time-division multiplexing.
 //
 // MMIO Interface (2 × 32-bit write registers):
-//   seg_data0 [31:0] — packed BCD/hex nibbles for digits 3..0
-//                       [31:28]=digit3  [27:24]=digit2  [23:20]=digit1  [19:16]=digit0
-//   seg_data1 [31:0] — packed BCD/hex nibbles for digits 7..4
-//                       [31:28]=digit7  [27:24]=digit6  [23:20]=digit5  [19:16]=digit4
+//   seg_data0 [31:0] — packed nibbles for digits 3..0
+//                       [15:12]=digit3  [11:8]=digit2  [7:4]=digit1  [3:0]=digit0
+//   seg_data1 [31:0] — packed nibbles for digits 7..4
+//                       [15:12]=digit7  [11:8]=digit6  [7:4]=digit5  [3:0]=digit4
+//
+// =============================================================================
+// GAME NIBBLE ENCODING (tell Sanjeebani to use these nibble values):
+// =============================================================================
+//   0x0 - 0x9 : Score digits 0-9  (standard decimal)
+//   0xA       : BLANK             — empty track position   (all segments off)
+//   0xB       : DINO (ground)     — dino standing: "II" shape (b,c,e,f segments)
+//   0xC       : DINO (air)        — dino jumping:  "⊓" shape (a,b,f segments)
+//   0xD       : CACTUS            — cactus shape:  "8-bottom" (a,b,c,e,f,g — no d)
+//   0xE       : BLANK (spare)
+//   0xF       : BLANK (spare)
+//
+// GAME DISPLAY LAYOUT (8 digits, leftmost=7, rightmost=0):
+//   Normal:  [DINO(B)][blank][blank][blank][blank][blank][blank][CACTUS(D)]
+//   Jump:    [DINO(C)][blank][blank][blank][blank][blank][CACTUS(D)][blank]
+//   Pair:    [DINO(B)][blank][blank][blank][blank][CACTUS(D)][CACTUS(D)][blank]
+//            → pair cactus = nibble 0xD on TWO adjacent digits
+//
+// Score display: write BCD digits to the leftmost digits (separate seg_data1 write)
+// =============================================================================
+//
+// Segment naming:  {g,f,e,d,c,b,a}  (active-LOW: 0=ON, 1=OFF)
+//        aaa
+//       f   b
+//       f   b
+//        ggg
+//       e   c
+//       e   c
+//        ddd
 //
 // Outputs (Nexys A7 standard):
 //   seg[6:0]  — active-LOW segment lines {CG, CF, CE, CD, CC, CB, CA}
@@ -88,35 +117,52 @@ module seg7_mux #(
     end
 
     // -------------------------------------------------------------------------
-    // 7-segment decoder (active-LOW segments)
-    // Segment order: {g, f, e, d, c, b, a}
+    // 7-segment decoder (active-LOW: 0=segment ON, 1=segment OFF)
+    // Bit order: {g, f, e, d, c, b, a}
     //
-    //   aaa
-    //  f   b
-    //  f   b
-    //   ggg
-    //  e   c
-    //  e   c
-    //   ddd
+    // Nibbles 0-9  : standard score digits
+    // Nibbles A-F  : game-specific characters (dino, cactus, blank)
     // -------------------------------------------------------------------------
     always @(*) begin
         case (digit_nibble)
-            4'h0: seg = 7'b100_0000;   // 0
-            4'h1: seg = 7'b111_1001;   // 1
-            4'h2: seg = 7'b010_0100;   // 2
-            4'h3: seg = 7'b011_0000;   // 3
-            4'h4: seg = 7'b001_1001;   // 4
-            4'h5: seg = 7'b001_0010;   // 5
-            4'h6: seg = 7'b000_0010;   // 6
-            4'h7: seg = 7'b111_1000;   // 7
-            4'h8: seg = 7'b000_0000;   // 8
-            4'h9: seg = 7'b001_0000;   // 9
-            4'hA: seg = 7'b000_1000;   // A
-            4'hB: seg = 7'b000_0011;   // b
-            4'hC: seg = 7'b100_0110;   // C
-            4'hD: seg = 7'b010_0001;   // d
-            4'hE: seg = 7'b000_0110;   // E
-            4'hF: seg = 7'b000_1110;   // F (also used for blank/error)
+            // ------ Score digits (standard decimal) ------
+            4'h0: seg = 7'b100_0000;   // digit 0
+            4'h1: seg = 7'b111_1001;   // digit 1
+            4'h2: seg = 7'b010_0100;   // digit 2
+            4'h3: seg = 7'b011_0000;   // digit 3
+            4'h4: seg = 7'b001_1001;   // digit 4
+            4'h5: seg = 7'b001_0010;   // digit 5
+            4'h6: seg = 7'b000_0010;   // digit 6
+            4'h7: seg = 7'b111_1000;   // digit 7
+            4'h8: seg = 7'b000_0000;   // digit 8
+            4'h9: seg = 7'b001_0000;   // digit 9
+
+            // ------ Game characters ------
+            // 0xA: BLANK — empty track position (all segments off)
+            4'hA: seg = 7'b111_1111;
+
+            // 0xB: DINO (ground) — "II" shape: left+right verticals, no bars
+            //   Segments ON: f(top-left), e(bot-left), b(top-right), c(bot-right)
+            //   Segments OFF: a(top), d(bot), g(mid)
+            //   Visual: two vertical bars side-by-side = dino body standing on ground
+            4'hB: seg = 7'b100_1001;   // {g=1,f=0,e=0,d=1,c=0,b=0,a=1}
+
+            // 0xC: DINO (air/jumping) — "⊓" shape: top + upper-left + upper-right
+            //   Segments ON: a(top), f(top-left), b(top-right)
+            //   Segments OFF: e, d, c, g
+            //   Visual: top bracket = dino at apex of jump (only upper body visible)
+            4'hC: seg = 7'b101_1100;   // {g=1,f=0,e=1,d=1,c=1,b=0,a=0}
+
+            // 0xD: CACTUS — "8-no-bottom" shape: all except bottom bar
+            //   Segments ON: a(top), b, c, e, f, g — all except d(bottom)
+            //   Visual: T-shape cactus silhouette with arms
+            //   PAIR cactus: write 0xD on TWO adjacent digits
+            4'hD: seg = 7'b000_1000;   // {g=0,f=0,e=0,d=1,c=0,b=0,a=0}
+
+            // 0xE, 0xF: BLANK (spare, same as 0xA)
+            4'hE: seg = 7'b111_1111;
+            4'hF: seg = 7'b111_1111;
+
             default: seg = 7'b111_1111; // all off
         endcase
     end
