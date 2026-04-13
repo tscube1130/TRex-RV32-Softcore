@@ -14,6 +14,7 @@ C_DIR    := c_workloads
 OUT_DIR  := imem_dmem
 
 SRC      := $(C_DIR)/$(WORKLOAD).c
+HDRS     := $(wildcard $(C_DIR)/*.h)
 ELF      := $(OUT_DIR)/$(WORKLOAD).elf
 IMEM_BIN := $(OUT_DIR)/imem.bin
 DMEM_BIN := $(OUT_DIR)/dmem.bin
@@ -33,7 +34,7 @@ list:
 
 compile: $(ELF)
 
-$(ELF): $(SRC)
+$(ELF): $(SRC) $(HDRS)
 	@mkdir -p $(OUT_DIR)
 	$(CC) $(CFLAGS) $(LDFLAGS) $< -o $@
 
