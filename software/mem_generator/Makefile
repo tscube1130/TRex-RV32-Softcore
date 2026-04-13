@@ -1,6 +1,7 @@
 # RISC-V workload build helper for mem_generator
 # Usage:
 #   make list
+#   make
 #   make WORKLOAD=code_factorial
 #   make WORKLOAD=code_dot_product
 
@@ -9,7 +10,7 @@ CC       := $(TOOLCHAIN)gcc
 OBJCOPY  := $(TOOLCHAIN)objcopy
 PYTHON   ?= python
 
-WORKLOAD ?= code_addition
+WORKLOAD ?= code_dino_game
 C_DIR    := c_workloads
 OUT_DIR  := imem_dmem
 
@@ -35,13 +36,13 @@ list:
 compile: $(ELF)
 
 $(ELF): $(SRC) $(HDRS)
-	@mkdir -p $(OUT_DIR)
+	@$(PYTHON) -c "from pathlib import Path; Path('$(OUT_DIR)').mkdir(exist_ok=True)"
 	$(CC) $(CFLAGS) $(LDFLAGS) $< -o $@
 
 bins: compile
 	$(OBJCOPY) -O binary --only-section=.text --only-section=.text.startup --only-section=.init $(ELF) $(IMEM_BIN)
-	$(OBJCOPY) -O binary --only-section=.data --only-section=.sdata --only-section=.rodata --only-section=.bss --only-section=.sbss $(ELF) $(DMEM_BIN) || true
-	@test -f $(DMEM_BIN) || : > $(DMEM_BIN)
+	-$(OBJCOPY) -O binary --only-section=.data --only-section=.sdata --only-section=.rodata --only-section=.bss --only-section=.sbss $(ELF) $(DMEM_BIN)
+	@$(PYTHON) -c "from pathlib import Path; Path('$(DMEM_BIN)').touch(exist_ok=True)"
 
 hex: bins
 	@cd $(OUT_DIR) && $(PYTHON) bin2hex.py
@@ -51,4 +52,4 @@ hex: bins
 	@echo "  DMEM: $(DMEM_HEX)"
 
 clean:
-	rm -f $(OUT_DIR)/*.elf $(OUT_DIR)/*.bin $(OUT_DIR)/*.hex
+	@$(PYTHON) -c "from pathlib import Path; [p.unlink() for ext in ('*.elf', '*.bin', '*.hex') for p in Path('$(OUT_DIR)').glob(ext)]"
