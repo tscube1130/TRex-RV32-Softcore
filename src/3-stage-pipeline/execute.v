@@ -181,10 +181,10 @@ math_coproc u_math (
     .is_mac         (is_mac),
     .is_mvacc       (is_mvacc),
     // pipeline_stall prevents MAC accumulator from updating spuriously.
-    // We pass the full freeze condition: branch stall OR external stall OR div stall.
-    // math_stall itself (div busy) does NOT need to be in this term —
-    // the div FSM runs on every clock regardless; it self-governs via its state.
-    .pipeline_stall (branch_stall || stall_read),
+    // ONLY use branch_stall here (NOT stall_read which includes div_stall feedback).
+    // This breaks the combinatorial loop: stall_read → pipeline_stall → math_stall → div_stall → stall_read
+    // The external stall (boot) is handled separately by the pipeline PC-advance freeze logic.
+    .pipeline_stall (branch_stall),
     .math_result    (math_result),
     .math_stall     (math_stall)
 );
