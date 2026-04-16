@@ -182,7 +182,7 @@ math_coproc u_math (
     .is_mvacc       (is_mvacc),
     // pipeline_stall prevents MAC accumulator from updating spuriously.
     // ONLY use branch_stall here (NOT stall_read which includes div_stall feedback).
-    // This breaks the combinatorial loop: stall_read → pipeline_stall → math_stall → div_stall → stall_read
+    // This breaks the combinational loop: stall_read → pipeline_stall → math_stall → div_stall → stall_read
     // The external stall (boot) is handled separately by the pipeline PC-advance freeze logic.
     .pipeline_stall (branch_stall),
     .math_result    (math_result),
