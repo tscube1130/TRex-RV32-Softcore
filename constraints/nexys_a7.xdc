@@ -6,7 +6,7 @@
 ##
 ## Signals mapped:
 ##   clk            → W5        100 MHz board oscillator
-##   reset          → N17       BTNC (active-LOW in RTL)
+##   reset          → N17       BTNC (active-HIGH board button)
 ##   sw_jump        → M18       BTNU — single jump
 ##   sw_double_jump → P17       BTNL — double jump
 ##   seg[6:0]       → 7-seg cathodes (active-LOW)
@@ -19,10 +19,10 @@
 set_property -dict { PACKAGE_PIN E3   IOSTANDARD LVCMOS33 } [get_ports { clk }]
 create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports { clk }]
 
-## ---- Reset: BTNC (active-LOW) -----------------------------------------------
+## ---- Reset: BTNC (active-HIGH board button) ---------------------------------
 set_property -dict { PACKAGE_PIN N17  IOSTANDARD LVCMOS33 } [get_ports { reset }]
 
-## ---- Buttons ----------------------------------------------------------------
+## ---- Jump Inputs -------------------------------------------------------------
 set_property -dict { PACKAGE_PIN M18  IOSTANDARD LVCMOS33 } [get_ports { sw_jump }]
 set_property -dict { PACKAGE_PIN P17  IOSTANDARD LVCMOS33 } [get_ports { sw_double_jump }]
 

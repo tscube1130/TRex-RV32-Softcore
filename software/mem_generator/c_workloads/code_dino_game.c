@@ -9,15 +9,16 @@
 #define PLAYER_JUMPING     1u
 #define SW_JUMP_MASK        0x1u
 #define SW_DOUBLE_JUMP_MASK 0x2u
-#define SINGLE_JUMP_FRAMES  8u
-#define DOUBLE_JUMP_FRAMES  14u
+#define SINGLE_JUMP_FRAMES  16u
+#define DOUBLE_JUMP_FRAMES  26u
 #define CACTUS_NONE         0u
 #define CACTUS_SINGLE       1u
 #define CACTUS_PAIR         2u
 #define SPAWN_CHECK_FRAMES  6u
-#define SPAWN_CHANCE_MASK   0x7u
-#define OBSTACLE_START_X    16u
-#define OBSTACLE_HIT_X      1u
+#define SPAWN_CHANCE_MASK   0x3u
+#define CACTUS_TYPE_BIT     3u
+#define OBSTACLE_START_X    0u
+#define OBSTACLE_HIT_X      6u
 #define SCORE_MAX           99999999u
 #define SCORE_TICK_FRAMES   4u
 #define LED_GAME_OVER       0xFFFFu
@@ -49,7 +50,7 @@ int main(void)
     unsigned int frame_count = 0u;
     unsigned int switch_state = 0u;
     unsigned int clear_mask = 0u;
-    unsigned int spawn_check_timer = SPAWN_CHECK_FRAMES;
+    unsigned int spawn_check_timer = 0u;
     unsigned int random_value = 0u;
     unsigned int obstacle_active = 0u;
     unsigned int obstacle_type = CACTUS_NONE;
@@ -101,15 +102,16 @@ int main(void)
 
                 if ((random_value & SPAWN_CHANCE_MASK) == 0u) {
                     obstacle_active = 1u;
-                    obstacle_type = (random_value & 0x1u) ? CACTUS_PAIR : CACTUS_SINGLE;
+                    obstacle_type = ((random_value >> CACTUS_TYPE_BIT) & 0x1u)
+                                      ? CACTUS_PAIR : CACTUS_SINGLE;
                     obstacle_x = OBSTACLE_START_X;
                 }
             }
         }
 
         if (obstacle_active != 0u) {
-            if (obstacle_x > 0u) {
-                obstacle_x = obstacle_x - 1u;
+            if (obstacle_x < OBSTACLE_HIT_X) {
+                obstacle_x = obstacle_x + 1u;
             } else {
                 obstacle_active = 0u;
                 obstacle_type = CACTUS_NONE;
@@ -117,7 +119,7 @@ int main(void)
         }
 
         if ((obstacle_active != 0u) &&
-            (obstacle_x <= OBSTACLE_HIT_X) &&
+            (obstacle_x >= OBSTACLE_HIT_X) &&
             (player_state == PLAYER_GROUNDED)) {
             crash = 1u;
         }
@@ -138,7 +140,7 @@ int main(void)
             }
         }
 
-        write_score(score);
+        render_game_display(player_state, obstacle_x, obstacle_type, score, 0u);
 
         game_debug_sink = frame_count + player_state + air_time_remaining
                         + obstacle_active + obstacle_type + obstacle_x + score

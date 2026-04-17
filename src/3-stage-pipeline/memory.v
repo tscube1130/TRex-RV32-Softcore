@@ -1,4 +1,6 @@
-module instr_mem (
+module instr_mem #(
+	parameter INIT_FILE = "imem.hex"
+)(
 	input  wire    	clk,
 	input  wire [31:0] pc, 	// byte address
 	output reg  [31:0] instr
@@ -12,7 +14,7 @@ module instr_mem (
 	// FPGA ROM initialization
 	// Initialize instruction memory from hex file (simulation / FPGA)
 	initial begin
-    	$readmemh("imem.hex", imem); 
+    	$readmemh(INIT_FILE, imem);
 	end
 
 	// Synchronous instruction fetch
@@ -28,7 +30,9 @@ endmodule
 //====================================
 // Data Memory (DMEM) - FPGA-safe
 //====================================
-module data_mem (
+module data_mem #(
+	parameter INIT_FILE = "dmem.hex"
+)(
 	input     	clk,
 
 	// Read port
@@ -56,7 +60,7 @@ module data_mem (
 	// Simulation / FPGA init
 	
 	initial begin
-    	$readmemh("dmem.hex", dmem);
+    	$readmemh(INIT_FILE, dmem);
 	end
 
 	// -------------------------
