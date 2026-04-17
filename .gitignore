@@ -2,6 +2,7 @@
 build/
 vivado*.jou
 vivado*.log
+vivado_pid*.str
 dfx_runtime.txt
 
 # Optional local editor/OS noise
