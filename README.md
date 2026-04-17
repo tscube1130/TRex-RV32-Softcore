@@ -73,7 +73,7 @@ CS224-Project/
 
 ```bash
 cd software/mem_generator
-make TARGET=code_game
+make WORKLOAD=code_dino_game
 ```
 
 ### Step 2 — Vivado Project Setup

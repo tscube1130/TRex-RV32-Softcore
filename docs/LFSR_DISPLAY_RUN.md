@@ -23,35 +23,41 @@ MMIO used:
 
 ## How To Run
 
-### 1. Build the workload
-From repository root in PowerShell:
+Use this exact flow so the bitstream always embeds the latest `imem.hex` / `dmem.hex`.
 
-```powershell
-cd D:\CS224\CS224-Project\software\mem_generator
+### 1. Build the workload (Git Bash)
+
+```bash
+cd "/c/Users/SANJEEBANI PARIDA/CS224-Project/software/mem_generator"
 make WORKLOAD=code_lfsr_demo
 ```
 
-This generates:
-- `software/mem_generator/imem_dmem/imem.hex`
-- `software/mem_generator/imem_dmem/dmem.hex`
+Notes:
+- The Makefile now auto-detects the AMD RISC-V toolchain at
+	`/c/AMDDesignTools/2025.2/gnu/riscv/nt/bin/` if it is not on `PATH`.
+- Output files are generated at:
+	- `software/mem_generator/imem_dmem/imem.hex`
+	- `software/mem_generator/imem_dmem/dmem.hex`
 
-### 2. Copy memory files to Vivado project folder
+### 2. Build bitstream (batch Vivado)
 
-```powershell
-Copy-Item "D:\CS224\CS224-Project\software\mem_generator\imem_dmem\imem.hex" "D:\CS224\cs224proj\" -Force
-Copy-Item "D:\CS224\CS224-Project\software\mem_generator\imem_dmem\dmem.hex" "D:\CS224\cs224proj\" -Force
+From repo root:
+
+```bash
+cd "/c/Users/SANJEEBANI PARIDA/CS224-Project"
+/c/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/build_nexys_a7.tcl
 ```
 
-### 3. Rebuild in Vivado
-In Vivado:
-1. Reset `synth_1`
-2. Reset `impl_1`
-3. Run Synthesis
-4. Run Implementation
-5. Generate Bitstream
+This script creates/updates the project in `build/vivado/` and copies BRAM init files into the synthesis run directory so `$readmemh` resolves correctly.
 
-### 4. Program board
-Use Hardware Manager, then press `BTNC` once (about 1 second).
+### 3. Program board (batch Vivado)
+
+```bash
+cd "/c/Users/SANJEEBANI PARIDA/CS224-Project"
+/c/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/program_nexys_a7.tcl
+```
+
+After programming, tap `BTNC` once to restart the game loop.
 
 Expected behavior:
 - Dino stays on the left side.
@@ -64,6 +70,7 @@ Expected behavior:
 - Keep this CPU-driven path as the final mode.
 - Avoid committing temporary hardware-only display bypass logic.
 - Keep only source changes needed for display packing and workload behavior.
+- If display is fully blank, first rebuild workload + bitstream using the script flow above. A stale or missing BRAM init file is the most common cause.
 
 ---
 
