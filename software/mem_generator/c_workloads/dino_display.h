@@ -49,15 +49,15 @@ static unsigned int pack_bcd_digits(unsigned int value, unsigned int first_digit
  *
  * Parameters:
  *   player_state   : 0=GROUNDED, 1=JUMPING
- *   obstacle_x     : obstacle horizontal position (0-16+)
+ *   obstacle_x     : obstacle digit position (0=rightmost .. 6=left-near-dino)
  *   obstacle_type  : 0=NONE, 1=CACTUS_SINGLE, 2=CACTUS_PAIR
  *   score          : current score (0-99999999)
  *   show_score     : if non-zero, display score in low digits
  *
  * Display layout:
  *   Digit 7: DINO (leftmost, player position)
- *   Digits 6-4: Game area (cactus moves here)
- *   Digits 3-0: Score (BCD encoded)
+ *   Digits 6-0: Game area (cactus starts at 0 and moves left toward 6)
+ *   Score is shown only when show_score != 0.
  */
 static void render_game_display(unsigned int player_state,
                                 unsigned int obstacle_x,
@@ -75,26 +75,40 @@ static void render_game_display(unsigned int player_state,
     /* Place DINO at digit 7 (leftmost position) */
     seg_data1 |= (dino_char << 12); /* Digit 7 = bits[15:12] of seg_data1 */
 
-    /* Place CACTUS based on position */
+    /* Place CACTUS based on digit position (0..6) */
     if (obstacle_type != 0u)
     { /* obstacle_type != NONE */
-        /* Map obstacle_x (0-16+) to digit position (6 down to 4) */
-        cactus_digit = 6u - (obstacle_x / 3u);
+        cactus_digit = obstacle_x;
 
-        if (cactus_digit >= 4u && cactus_digit <= 6u)
+        if (cactus_digit <= 6u)
         {
-            /* Cactus fits in digits 6-4 (seg_data1) */
-            seg_data1 |= (0xDu << ((cactus_digit - 4u) * 4u));
-
-            /* For PAIR cactus, place second cactus one digit to the left */
-            if (obstacle_type == 2u && cactus_digit > 4u)
+            if (cactus_digit <= 3u)
             {
-                seg_data1 |= (0xDu << ((cactus_digit - 4u - 1u) * 4u));
+                seg_data0 |= (0xDu << (cactus_digit * 4u));
+            }
+            else
+            {
+                seg_data1 |= (0xDu << ((cactus_digit - 4u) * 4u));
+            }
+
+            /* For PAIR cactus, place second cactus one digit to the right. */
+            if ((obstacle_type == 2u) && (cactus_digit > 0u))
+            {
+                unsigned int trailing_digit = cactus_digit - 1u;
+
+                if (trailing_digit <= 3u)
+                {
+                    seg_data0 |= (0xDu << (trailing_digit * 4u));
+                }
+                else
+                {
+                    seg_data1 |= (0xDu << ((trailing_digit - 4u) * 4u));
+                }
             }
         }
     }
 
-    /* Fill unused digits with BLANK (0xA) */
+    /* Fill game track digits 6..4 with BLANK (0xA) if not occupied. */
     if ((seg_data1 & 0x00000F00u) == 0u)
         seg_data1 |= (0xAu << 8); /* Digit 6 */
     if ((seg_data1 & 0x000000F0u) == 0u)
@@ -109,8 +123,15 @@ static void render_game_display(unsigned int player_state,
     }
     else
     {
-        /* All blanks if not showing score */
-        seg_data0 = 0xAAAAAAAAu;
+        /* Keep cactus in digits 3..0 and blank any unoccupied slots. */
+        if ((seg_data0 & 0x0000F000u) == 0u)
+            seg_data0 |= (0xAu << 12); /* Digit 3 */
+        if ((seg_data0 & 0x00000F00u) == 0u)
+            seg_data0 |= (0xAu << 8); /* Digit 2 */
+        if ((seg_data0 & 0x000000F0u) == 0u)
+            seg_data0 |= (0xAu << 4); /* Digit 1 */
+        if ((seg_data0 & 0x0000000Fu) == 0u)
+            seg_data0 |= (0xAu << 0); /* Digit 0 */
     }
 
     /* Write to hardware */
