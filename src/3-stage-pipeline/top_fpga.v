@@ -24,7 +24,9 @@
 
 module top_fpga #(
     parameter IMEMSIZE = 4096,
-    parameter DMEMSIZE = 4096
+    parameter DMEMSIZE = 4096,
+    parameter IMEM_INIT_FILE = "imem.hex",
+    parameter DMEM_INIT_FILE = "dmem.hex"
 )(
     input  wire        clk,             // 100 MHz board oscillator
     input  wire        reset,           // BTNC — active-HIGH on board
@@ -49,7 +51,7 @@ module top_fpga #(
     wire reset_n = ~reset;
 
     // =========================================================================
-    // Clock divider: 100 MHz → ~1 Hz (game tick rate)
+    // Clock divider: 100 MHz -> ~1 MHz for practical on-board testing.
     // =========================================================================
     reg [25:0] clk_cnt;
     reg        slow_clk;
@@ -59,7 +61,7 @@ module top_fpga #(
             clk_cnt  <= 26'd0;
             slow_clk <= 1'b0;
         end else begin
-            if (clk_cnt == 26'd49_999_999) begin
+            if (clk_cnt == 26'd49) begin
                 clk_cnt  <= 26'd0;
                 slow_clk <= ~slow_clk;
             end else begin
@@ -102,10 +104,25 @@ module top_fpga #(
     wire        jump_stable, dbl_jump_stable;   // from debouncers (unused here)
 
     // =========================================================================
-    // MMIO READ DATA MUX
-    // When CPU reads an MMIO address, return MMIO data instead of BRAM
+    // MMIO READ ALIGNMENT
+    // BRAM reads are synchronous (1-cycle latency). MMIO reads are combinational
+    // from mmio_decoder, so register MMIO select/data by one slow_clk cycle to
+    // match BRAM timing and keep load data aligned in WB.
     // =========================================================================
-    assign dmem_rdata_to_pipe = mmio_sel ? mmio_rdata : bram_rdata;
+    reg        mmio_sel_q;
+    reg [31:0] mmio_rdata_q;
+
+    always @(posedge slow_clk or negedge reset_n) begin
+        if (!reset_n) begin
+            mmio_sel_q   <= 1'b0;
+            mmio_rdata_q <= 32'h0000_0000;
+        end else begin
+            mmio_sel_q   <= mmio_sel;
+            mmio_rdata_q <= mmio_rdata;
+        end
+    end
+
+    assign dmem_rdata_to_pipe = mmio_sel_q ? mmio_rdata_q : bram_rdata;
 
     // =========================================================================
     // PIPELINE CPU (clocked on slow_clk for game-speed execution)
@@ -133,7 +150,9 @@ module top_fpga #(
     // =========================================================================
     // INSTRUCTION MEMORY (clocked on slow_clk)
     // =========================================================================
-    instr_mem IMEM (
+    instr_mem #(
+        .INIT_FILE(IMEM_INIT_FILE)
+    ) IMEM (
         .clk   (slow_clk),
         .pc    (pc_out),
         .instr (inst_mem_read_data)
@@ -143,7 +162,9 @@ module top_fpga #(
     // DATA MEMORY — BRAM (clocked on slow_clk)
     // Read/write gated by mmio_decoder so MMIO addresses don't hit BRAM
     // =========================================================================
-    data_mem DMEM (
+    data_mem #(
+        .INIT_FILE(DMEM_INIT_FILE)
+    ) DMEM (
         .clk   (slow_clk),
         .re    (dmem_re_bram),
         .raddr (dmem_raddr),
