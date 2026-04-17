@@ -1,0 +1,9 @@
+# Vivado generated project/output files
+build/
+vivado*.jou
+vivado*.log
+dfx_runtime.txt
+
+# Optional local editor/OS noise
+.DS_Store
+Thumbs.db
