@@ -22,6 +22,7 @@
 #define SCORE_MAX           99999999u
 #define SCORE_TICK_FRAMES   4u
 #define LED_GAME_OVER       0xFFFFu
+/* state machine: replaces infinite halt after crash */
 #define STATE_PLAYING       0u 
 #define STATE_GAME_OVER     1u
 #define STATE_SHOW_SCORE    2u
@@ -54,6 +55,9 @@ int main(void)
     unsigned int score = 0u;
     unsigned int score_tick_timer = SCORE_TICK_FRAMES;
     unsigned int crash = 0u;
+    unsigned int game_state = STATE_PLAYING;  /* tracks current phase */
+unsigned int phase_timer = 0u;            /* counts frames in current phase */
+unsigned int final_score = 0u;            /* latches score at crash moment */
 
     for (;;) {
         wait_for_next_frame();
