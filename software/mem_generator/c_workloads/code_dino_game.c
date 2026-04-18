@@ -109,20 +109,22 @@ unsigned int final_score = 0u;            /* latches score at crash moment */
             }
         }
 
-        if (obstacle_active != 0u) {
-            if (obstacle_x < OBSTACLE_HIT_X) {
-                obstacle_x = obstacle_x + 1u;
-            } else {
-                obstacle_active = 0u;
-                obstacle_type = CACTUS_NONE;
-            }
-        }
+        /* collision BEFORE movement: original cleared obstacle_active
+ * at x==6 before this check ran, so crash never fired */
+if ((obstacle_active != 0u) &&
+    (obstacle_x == OBSTACLE_HIT_X) &&
+    (player_state == PLAYER_GROUNDED)) {
+    crash = 1u;
+}
 
-        if ((obstacle_active != 0u) &&
-            (obstacle_x >= OBSTACLE_HIT_X) &&
-            (player_state == PLAYER_GROUNDED)) {
-            crash = 1u;
-        }
+if (obstacle_active != 0u) {
+    if (obstacle_x < OBSTACLE_HIT_X) {
+        obstacle_x = obstacle_x + 1u;
+    } else {
+        obstacle_active = 0u;
+        obstacle_type = CACTUS_NONE;
+    }
+}
 
         if (crash != 0u) {
             halt_on_game_over();
