@@ -10,7 +10,7 @@
 #define SW_JUMP_MASK        0x1u
 #define SW_DOUBLE_JUMP_MASK 0x2u
 #define SINGLE_JUMP_FRAMES  16u
-#define DOUBLE_JUMP_FRAMES  26u
+#define DOUBLE_JUMP_FRAMES  30u
 #define CACTUS_NONE         0u
 #define CACTUS_SINGLE       1u
 #define CACTUS_PAIR         2u
