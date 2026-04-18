@@ -22,6 +22,10 @@
 #define SCORE_MAX           99999999u
 #define SCORE_TICK_FRAMES   4u
 #define LED_GAME_OVER       0xFFFFu
+#define STATE_PLAYING       0u 
+#define STATE_GAME_OVER     1u
+#define STATE_SHOW_SCORE    2u
+
 
 static volatile unsigned int game_debug_sink;
 
