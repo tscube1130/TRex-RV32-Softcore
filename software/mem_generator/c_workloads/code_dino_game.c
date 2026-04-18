@@ -127,8 +127,14 @@ if (obstacle_active != 0u) {
 }
 
         if (crash != 0u) {
-            halt_on_game_over();
-        }
+    /* latch score, transition to GAME OVER phase */
+    final_score = score;
+    game_state  = STATE_GAME_OVER;
+    phase_timer = 0u;
+    write_leds(LED_GAME_OVER);
+    write_score_digits_low(0xAAAAAAAAu);
+    write_score_digits_high(0xAAAAAAAAu);
+}
 
         if (score_tick_timer > 0u) {
             score_tick_timer = score_tick_timer - 1u;
