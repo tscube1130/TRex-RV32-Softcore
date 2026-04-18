@@ -136,19 +136,35 @@ if (obstacle_active != 0u) {
     write_score_digits_high(0xAAAAAAAAu);
 }
 
-        if (score_tick_timer > 0u) {
-            score_tick_timer = score_tick_timer - 1u;
-        } else {
-            score_tick_timer = SCORE_TICK_FRAMES;
-
-            if (score < SCORE_MAX) {
-                score = score + 1u;
+        if (game_state == STATE_PLAYING) {
+            if (score_tick_timer > 0u) {
+                score_tick_timer = score_tick_timer - 1u;
             } else {
-                score = 0u;
-            }
-        }
+                score_tick_timer = SCORE_TICK_FRAMES;
 
-        render_game_display(player_state, obstacle_x, obstacle_type, score, 0u);
+                if (score < SCORE_MAX) {
+                    score = score + 1u;
+                } else {
+                    score = 0u;
+                }
+            }
+
+            render_game_display(player_state, obstacle_x, obstacle_type, score, 0u);
+
+        } else if (game_state == STATE_GAME_OVER) {
+
+            /* hold blank + all-LED for GAME_OVER_HOLD_FRAMES then show score */
+            phase_timer = phase_timer + 1u;
+            if (phase_timer >= GAME_OVER_HOLD_FRAMES) {
+                game_state  = STATE_SHOW_SCORE;
+                phase_timer = 0u;
+                write_score_digits_low(pack_bcd_digits(final_score, 0u));
+                write_score_digits_high(pack_bcd_digits(final_score, 4u));
+            }
+
+        } else {
+            /* STATE_SHOW_SCORE: final score stays on display until board reset */
+        }
 
         game_debug_sink = frame_count + player_state + air_time_remaining
                         + obstacle_active + obstacle_type + obstacle_x + score
