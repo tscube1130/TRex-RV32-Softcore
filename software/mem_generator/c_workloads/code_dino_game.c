@@ -25,6 +25,7 @@
 #define STATE_PLAYING       0u 
 #define STATE_GAME_OVER     1u
 #define STATE_SHOW_SCORE    2u
+#define GAME_OVER_HOLD_FRAMES 60u  /* ~3s blank hold before score appears */
 
 
 static volatile unsigned int game_debug_sink;
