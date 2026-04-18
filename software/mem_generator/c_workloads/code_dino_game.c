@@ -34,15 +34,6 @@ static void wait_for_next_frame(void)
     }
 }
 
-static void halt_on_game_over(void)
-{
-    write_leds(LED_GAME_OVER);
-
-    for (;;) {
-        /* Trap here so the game-over LED pattern stays visible. */
-    }
-}
-
 int main(void)
 {
     unsigned int player_state = PLAYER_GROUNDED;
