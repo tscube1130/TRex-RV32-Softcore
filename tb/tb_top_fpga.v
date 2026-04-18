@@ -267,6 +267,17 @@ module tb_top_fpga;
             $display("  FAIL [T12_score_display_nonblank]");
             fail = fail + 1;
         end
+
+        // ------------------------------------------------------------------
+        // TEST 13: Double jump priority — BTNL wins over BTNU simultaneously
+        // ------------------------------------------------------------------
+        $display("=== TEST 13: Double jump priority over single jump ===");
+        sw_jump = 1; sw_double_jump = 1;
+        wait_cycles(5);
+        check("T13_dbl_jump_raw_HIGH", dut.u_debounce_dbl.btn_raw, 1'b1);
+        check("T13_sw_jump_raw_HIGH",  dut.u_debounce_jump.btn_raw, 1'b1);
+        sw_jump = 0; sw_double_jump = 0;
+        wait_cycles(5);
         
         // ── Summary ───────────────────────────────────────────────────────
         wait_cycles(10);
