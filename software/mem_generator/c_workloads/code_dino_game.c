@@ -10,7 +10,7 @@
 #define SW_JUMP_MASK        0x1u
 #define SW_DOUBLE_JUMP_MASK 0x2u
 #define SINGLE_JUMP_FRAMES  16u
-#define DOUBLE_JUMP_FRAMES  26u
+#define DOUBLE_JUMP_FRAMES  30u
 #define CACTUS_NONE         0u
 #define CACTUS_SINGLE       1u
 #define CACTUS_PAIR         2u
@@ -22,6 +22,12 @@
 #define SCORE_MAX           99999999u
 #define SCORE_TICK_FRAMES   4u
 #define LED_GAME_OVER       0xFFFFu
+/* state machine: replaces infinite halt after crash */
+#define STATE_PLAYING       0u 
+#define STATE_GAME_OVER     1u
+#define STATE_SHOW_SCORE    2u
+#define GAME_OVER_HOLD_FRAMES 60u  /* ~3s blank hold before score appears */
+
 
 static volatile unsigned int game_debug_sink;
 
@@ -31,15 +37,6 @@ static void wait_for_next_frame(void)
 
     for (delay = 0u; delay < FRAME_DELAY_CYCLES; delay = delay + 1u) {
         /* Busy-wait frame timer for the simple bare-metal game loop. */
-    }
-}
-
-static void halt_on_game_over(void)
-{
-    write_leds(LED_GAME_OVER);
-
-    for (;;) {
-        /* Trap here so the game-over LED pattern stays visible. */
     }
 }
 
@@ -58,6 +55,9 @@ int main(void)
     unsigned int score = 0u;
     unsigned int score_tick_timer = SCORE_TICK_FRAMES;
     unsigned int crash = 0u;
+    unsigned int game_state = STATE_PLAYING;  /* tracks current phase */
+unsigned int phase_timer = 0u;            /* counts frames in current phase */
+unsigned int final_score = 0u;            /* latches score at crash moment */
 
     for (;;) {
         wait_for_next_frame();
@@ -109,38 +109,62 @@ int main(void)
             }
         }
 
-        if (obstacle_active != 0u) {
-            if (obstacle_x < OBSTACLE_HIT_X) {
-                obstacle_x = obstacle_x + 1u;
-            } else {
-                obstacle_active = 0u;
-                obstacle_type = CACTUS_NONE;
-            }
-        }
+        /* collision BEFORE movement: original cleared obstacle_active
+ * at x==6 before this check ran, so crash never fired */
+if ((obstacle_active != 0u) &&
+    (obstacle_x == OBSTACLE_HIT_X) &&
+    (player_state == PLAYER_GROUNDED)) {
+    crash = 1u;
+}
 
-        if ((obstacle_active != 0u) &&
-            (obstacle_x >= OBSTACLE_HIT_X) &&
-            (player_state == PLAYER_GROUNDED)) {
-            crash = 1u;
-        }
+if (obstacle_active != 0u) {
+    if (obstacle_x < OBSTACLE_HIT_X) {
+        obstacle_x = obstacle_x + 1u;
+    } else {
+        obstacle_active = 0u;
+        obstacle_type = CACTUS_NONE;
+    }
+}
 
         if (crash != 0u) {
-            halt_on_game_over();
-        }
+    /* latch score, transition to GAME OVER phase */
+    final_score = score;
+    game_state  = STATE_GAME_OVER;
+    phase_timer = 0u;
+    write_leds(LED_GAME_OVER);
+    write_score_digits_low(0xAAAAAAAAu);
+    write_score_digits_high(0xAAAAAAAAu);
+}
 
-        if (score_tick_timer > 0u) {
-            score_tick_timer = score_tick_timer - 1u;
-        } else {
-            score_tick_timer = SCORE_TICK_FRAMES;
-
-            if (score < SCORE_MAX) {
-                score = score + 1u;
+        if (game_state == STATE_PLAYING) {
+            if (score_tick_timer > 0u) {
+                score_tick_timer = score_tick_timer - 1u;
             } else {
-                score = 0u;
-            }
-        }
+                score_tick_timer = SCORE_TICK_FRAMES;
 
-        render_game_display(player_state, obstacle_x, obstacle_type, score, 0u);
+                if (score < SCORE_MAX) {
+                    score = score + 1u;
+                } else {
+                    score = 0u;
+                }
+            }
+
+            render_game_display(player_state, obstacle_x, obstacle_type, score, 0u);
+
+        } else if (game_state == STATE_GAME_OVER) {
+
+            /* hold blank + all-LED for GAME_OVER_HOLD_FRAMES then show score */
+            phase_timer = phase_timer + 1u;
+            if (phase_timer >= GAME_OVER_HOLD_FRAMES) {
+                game_state  = STATE_SHOW_SCORE;
+                phase_timer = 0u;
+                write_score_digits_low(pack_bcd_digits(final_score, 0u));
+                write_score_digits_high(pack_bcd_digits(final_score, 4u));
+            }
+
+        } else {
+            /* STATE_SHOW_SCORE: final score stays on display until board reset */
+        }
 
         game_debug_sink = frame_count + player_state + air_time_remaining
                         + obstacle_active + obstacle_type + obstacle_x + score

@@ -14,7 +14,7 @@
 //
 // Clock domains:
 //   clk      — 100 MHz board oscillator (seg7_mux, lfsr16, debouncer)
-//   slow_clk — ~1 Hz divided clock (pipe, IMEM, DMEM, mmio_decoder, led_ctrl)
+//   slow_clk — ~1 MHz divided clock (pipe, IMEM, DMEM, mmio_decoder, led_ctrl)
 //
 // Reset polarity:
 //   Board BTNC is active-HIGH on press.
