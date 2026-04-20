@@ -124,15 +124,17 @@ module mmio_decoder (
     // 7-segment registers — latch on confirmed write (dmem_write_valid)
     // -----------------------------------------------------------------------
     always @(posedge clk or negedge reset) begin
-    // Audio trigger - latch the event code
-            if (is_mmio_write && dmem_write_valid && (dmem_waddr == MMIO_AUDIO))
-                audio_ev <= dmem_wdata[1:0];
-            else
-                audio_ev <= 2'b00; // Auto-clear so sound only triggers once per write
         if (!reset) begin
+            audio_ev  <= 2'b00;
             seg_data0 <= 32'hAAAA_AAAA;   // all BLANK at reset (0xA per nibble)
             seg_data1 <= 32'hAAAA_AAAA;
         end else begin
+            // Audio trigger - latch the event code for one cycle
+            if (is_mmio_write && dmem_write_valid && (dmem_waddr == MMIO_AUDIO))
+                audio_ev <= dmem_wdata[1:0];
+            else
+                audio_ev <= 2'b00; // auto-clear so sound triggers once per write
+
             if (is_mmio_write && dmem_write_valid && (dmem_waddr == MMIO_SEG_W0))
                 seg_data0 <= dmem_wdata;
             if (is_mmio_write && dmem_write_valid && (dmem_waddr == MMIO_SEG_W1))

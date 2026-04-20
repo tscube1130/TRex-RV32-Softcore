@@ -1,20 +1,20 @@
 `timescale 1ns / 1ps
 // =============================================================================
-// top_fpga.v — Project T-Rex — Board Top Module for Nexys A7-100T
+// top_fpga.v - Project T-Rex - Board Top Module for Nexys A7-100T
 // =============================================================================
 // Wires together:
-//   1. pipe           — 3-stage RV32IM pipeline (slow_clk)
-//   2. instr_mem      — instruction BRAM (slow_clk)
-//   3. data_mem       — data BRAM (slow_clk), gated by mmio_decoder
-//   4. mmio_decoder   — MMIO address router (slow_clk)
-//   5. seg7_mux       — 8-digit 7-seg TDM driver (FAST clk, 100 MHz)
-//   6. lfsr16         — 16-bit LFSR for cactus RNG (FAST clk, 100 MHz)
-//   7. debouncer (x2) — sticky button debouncers (FAST clk, 100 MHz)
-//   8. led_ctrl       — LED register (slow_clk)
+//   1. pipe           - 3-stage RV32IM pipeline (slow_clk)
+//   2. instr_mem      - instruction BRAM (slow_clk)
+//   3. data_mem       - data BRAM (slow_clk), gated by mmio_decoder
+//   4. mmio_decoder   - MMIO address router (slow_clk)
+//   5. seg7_mux       - 8-digit 7-seg TDM driver (FAST clk, 100 MHz)
+//   6. lfsr16         - 16-bit LFSR for cactus RNG (FAST clk, 100 MHz)
+//   7. debouncer (x2) - sticky button debouncers (FAST clk, 100 MHz)
+//   8. led_ctrl       - LED register (slow_clk)
 //
 // Clock domains:
-//   clk      — 100 MHz board oscillator (seg7_mux, lfsr16, debouncer)
-//   slow_clk — ~1 MHz divided clock (pipe, IMEM, DMEM, mmio_decoder, led_ctrl)
+//   clk      - 100 MHz board oscillator (seg7_mux, lfsr16, debouncer)
+//   slow_clk - ~1 MHz divided clock (pipe, IMEM, DMEM, mmio_decoder, led_ctrl)
 //
 // Reset polarity:
 //   Board BTNC is active-HIGH on press.
@@ -29,11 +29,11 @@ module top_fpga #(
     parameter DMEM_INIT_FILE = "dmem.hex"
 )(
     input  wire        clk,             // 100 MHz board oscillator
-    input  wire        reset,           // BTNC — active-HIGH on board
+    input  wire        reset,           // BTNC - active-HIGH on board
 
     // Game buttons
-    input  wire        sw_jump,         // BTNU — single jump
-    input  wire        sw_double_jump,  // BTNL — double jump
+    input  wire        sw_jump,         // BTNU - single jump
+    input  wire        sw_double_jump,  // BTNL - double jump
 
     // 7-segment display
     output wire [6:0]  seg,             // cathodes (active-LOW)
@@ -41,9 +41,8 @@ module top_fpga #(
     output wire        dp,              // decimal point
 
     // LEDs
-    output wire [15:0] led              // active-HIGH
-    // LEDs
-    output wire [15:0] led,              // active-HIGH
+    output wire [15:0] led,             // active-HIGH
+    
 
     // Audio Output
     output wire        audio_out,        // AUD_PWM
@@ -77,7 +76,7 @@ module top_fpga #(
     end
 
     // =========================================================================
-    // PIPE ↔ MEMORY WIRES
+    // PIPE <-> MEMORY WIRES
     // =========================================================================
     wire [31:0] inst_mem_read_data;
     wire        inst_mem_is_valid = 1'b1;
@@ -165,7 +164,7 @@ module top_fpga #(
     );
 
     // =========================================================================
-    // DATA MEMORY — BRAM (clocked on slow_clk)
+    // DATA MEMORY - BRAM (clocked on slow_clk)
     // Read/write gated by mmio_decoder so MMIO addresses don't hit BRAM
     // =========================================================================
     data_mem #(
@@ -182,7 +181,7 @@ module top_fpga #(
     );
 
     // =========================================================================
-    // MMIO DECODER (clocked on slow_clk — same domain as pipeline)
+    // MMIO DECODER (clocked on slow_clk - same domain as pipeline)
     // Routes addresses >= 0x2000 to peripherals instead of BRAM
     // =========================================================================
     mmio_decoder u_mmio (
@@ -225,7 +224,7 @@ module top_fpga #(
     );
 
     // =========================================================================
-    // LFSR — free-running RNG on fast clock (read by CPU via MMIO_LFSR_R)
+    // LFSR - free-running RNG on fast clock (read by CPU via MMIO_LFSR_R)
     // =========================================================================
     lfsr16 u_lfsr (
         .clk      (clk),               // FAST clock
@@ -234,7 +233,7 @@ module top_fpga #(
     );
 
     // =========================================================================
-    // DEBOUNCER — single jump button (BTNU)
+    // DEBOUNCER - single jump button (BTNU)
     // Runs on fast clock for proper 10 ms debounce timing
     // =========================================================================
     debouncer u_debounce_jump (
@@ -247,7 +246,7 @@ module top_fpga #(
     );
 
     // =========================================================================
-    // DEBOUNCER — double jump button (BTNL)
+    // DEBOUNCER - double jump button (BTNL)
     // =========================================================================
     debouncer u_debounce_dbl (
         .clk        (clk),             // FAST clock
@@ -259,7 +258,7 @@ module top_fpga #(
     );
 
     // =========================================================================
-    // LED CONTROLLER (clocked on slow_clk — same domain as MMIO writes)
+    // LED CONTROLLER (clocked on slow_clk - same domain as MMIO writes)
     // =========================================================================
     led_ctrl u_led (
         .clk    (slow_clk),

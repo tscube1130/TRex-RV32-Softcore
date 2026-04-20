@@ -15,6 +15,7 @@ file mkdir $build_dir
 create_project -force $proj_name $build_dir -part $part_name
 set_property target_language Verilog [current_project]
 set_property simulator_language Verilog [current_project]
+set_property source_mgmt_mode None [current_project]
 
 set src_dir [file join $repo_root "src"]
 set pipe_dir [file join $src_dir "3-stage-pipeline"]
@@ -50,11 +51,33 @@ add_files -fileset constrs_1 -norecurse [list [file join $repo_root "constraints
 set_property top top_fpga [get_filesets sources_1]
 update_compile_order -fileset sources_1
 
+# Ensure stale run metadata cannot keep an old top (e.g. "pipe")
+if {[llength [get_runs synth_1 -quiet]] > 0} {
+    reset_run synth_1
+}
+if {[llength [get_runs impl_1 -quiet]] > 0} {
+    reset_run impl_1
+}
+
+# Fail fast if project top is not top_fpga
+if {[get_property top [get_filesets sources_1]] ne "top_fpga"} {
+    error "Top module mismatch: project top is '[get_property top [get_filesets sources_1]]', expected 'top_fpga'"
+}
+puts "INFO: Using top module '[get_property top [get_filesets sources_1]]' for synthesis"
+
 launch_runs synth_1 -jobs 4
 wait_on_run synth_1
 
 if {[get_property PROGRESS [get_runs synth_1]] != "100%"} {
     error "synth_1 did not complete successfully"
+}
+
+# Generate impl scripts first; on some setups runme launches before scripts exist.
+launch_runs impl_1 -to_step write_bitstream -jobs 4 -scripts_only
+set impl_dir [get_property DIRECTORY [get_runs impl_1]]
+set impl_tcls [glob -nocomplain -directory $impl_dir *.tcl]
+if {[llength $impl_tcls] == 0} {
+    error "impl_1 script generation failed: no .tcl file found under $impl_dir"
 }
 
 launch_runs impl_1 -to_step write_bitstream -jobs 4
