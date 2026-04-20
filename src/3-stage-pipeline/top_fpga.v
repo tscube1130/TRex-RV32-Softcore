@@ -42,6 +42,12 @@ module top_fpga #(
 
     // LEDs
     output wire [15:0] led              // active-HIGH
+    // LEDs
+    output wire [15:0] led,              // active-HIGH
+
+    // Audio Output
+    output wire        audio_out,        // AUD_PWM
+    output wire        audio_en          // AUD_SD (amplifier enable)
 );
 
     // =========================================================================
@@ -102,7 +108,7 @@ module top_fpga #(
     wire [15:0] lfsr_out;
     wire        jump_sticky, dbl_jump_sticky;
     wire        jump_stable, dbl_jump_stable;   // from debouncers (unused here)
-
+   wire [1:0]  audio_ev;
     // =========================================================================
     // MMIO READ ALIGNMENT
     // BRAM reads are synchronous (1-cycle latency). MMIO reads are combinational
