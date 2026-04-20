@@ -268,5 +268,14 @@ module top_fpga #(
         .wdata  (led_wdata),
         .led_out(led)
     );
+    // =========================================================================
+    // AUDIO DRIVER (Clocked on FAST 100 MHz for crisp tones)
+    // =========================================================================
+    audio_driver u_audio (
+        .clk      (clk),        // FAST clock
+        .sound_ev (audio_ev),   // From MMIO decoder
+        .audio_out(audio_out),
+        .audio_en (audio_en)
+    );
 
 endmodule
