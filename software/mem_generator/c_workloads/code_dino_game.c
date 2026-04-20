@@ -135,7 +135,11 @@ int main(void)
                     /* Hit head of double cactus with a single jump */
                     crash = 1u; 
                 }
-            } else if (trailing_active != 0u) {
+              else if (obstacle_type == CACTUS_SINGLE && last_jump_type == 2u) {
+        /* NEW: Over-jumped! Double jump crashes on a single cactus */
+        crash = 1u; 
+    }
+}  else if (trailing_active != 0u) {
                 if (player_state == PLAYER_GROUNDED) {
                     crash = 1u;
                 } else if (last_jump_type == 1u) {
