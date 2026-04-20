@@ -23,6 +23,7 @@ add_files -fileset sources_1 -norecurse [list \
     [file join $pipe_dir "top_fpga.v"] \
     [file join $pipe_dir "pipeline.v"] \
     [file join $pipe_dir "memory.v"] \
+    [file join $src_dir "audio_driver.v"] \
     [file join $src_dir "math_coproc.v"] \
     [file join $src_dir "mmio_decoder.v"] \
     [file join $src_dir "debouncer.v"] \
