@@ -101,10 +101,12 @@ int main(void)
                     player_state = PLAYER_JUMPING;
                     air_time_remaining = DOUBLE_JUMP_FRAMES;
                     last_jump_type = 2u;
+                    play_sound(1);
                 } else if ((switch_state & SW_JUMP_MASK) != 0u) {
                     player_state = PLAYER_JUMPING;
                     air_time_remaining = SINGLE_JUMP_FRAMES;
                     last_jump_type = 1u;
+                    play_sound(1);
                 }
             }
 
@@ -176,6 +178,10 @@ int main(void)
                 score_tick_timer = SCORE_TICK_FRAMES;
                 if (score < SCORE_MAX) {
                     score = score + 1u;
+                    // Play a short beep every 100 points
+                    if (score > 0 && (score % 100 == 0)) {
+                        play_sound(3); 
+                    }
                 } else {
                     score = 0u;
                 }
@@ -187,6 +193,8 @@ int main(void)
                 game_state  = STATE_GAME_OVER;
                 phase_timer = 0u;
                 write_leds(LED_GAME_OVER);
+
+                play_sound(2);
                 
                 /* Instantly blank the display on crash using direct MMIO */
                 MMIO_SEG_LOW  = 0xAAAAAAAAu;
