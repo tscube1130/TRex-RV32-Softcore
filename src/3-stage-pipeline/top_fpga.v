@@ -205,6 +205,7 @@ module top_fpga #(
         .led_we           (led_we),
         .seg_data0        (seg_data0),
         .seg_data1        (seg_data1),
+        .audio_ev         (audio_ev),
         .lfsr_out         (lfsr_out),
         .jump_sticky      (jump_sticky),
         .dbl_jump_sticky  (dbl_jump_sticky)
