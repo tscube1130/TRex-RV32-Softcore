@@ -51,5 +51,11 @@ static inline void write_score_digits_high(unsigned int packed_digits)
 {
     mmio_write(MMIO_SEG_W1_ADDR, packed_digits);
 }
+#define MMIO_AUDIO_ADDR   0x00002018u  /* write: 0x1=jump, 0x2=crash, 0x3=score */
+
+static inline void play_sound(unsigned int sound_code)
+{
+    mmio_write(MMIO_AUDIO_ADDR, sound_code);
+}
 
 #endif
