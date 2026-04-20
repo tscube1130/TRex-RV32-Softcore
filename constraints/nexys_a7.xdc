@@ -70,4 +70,8 @@ set_property -dict { PACKAGE_PIN V11  IOSTANDARD LVCMOS33 } [get_ports { led[15]
 ## ---- Bitstream Configuration ------------------------------------------------
 set_property CFGBVS VCCO        [current_design]
 set_property CONFIG_VOLTAGE 3.3 [current_design]
-
+## PWM Audio Amplifier
+## Port: audio_out (AUD_PWM) - The actual sound wave
+set_property -dict { PACKAGE_PIN A11   IOSTANDARD LVCMOS33 } [get_ports { audio_out }];
+## Port: audio_en (AUD_SD) - The "Shutdown" pin (must be high to enable the amp)
+set_property -dict { PACKAGE_PIN D12   IOSTANDARD LVCMOS33 } [get_ports { audio_en }];
