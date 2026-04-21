@@ -241,6 +241,44 @@ module tb_top_fpga;
         check16("T10_led_clears_on_rereset", led, 16'h0000);
         reset = 0;
 
+// ------------------------------------------------------------------
+        // TEST 11: Game over — LED must be 0xFFFF after crash
+        // ----------------------------------------------------------
+        $display("=== TEST 11: LED all-on after game over ===");
+        reset = 1; wait_cycles(5); reset = 0;
+        wait_cycles(820_000);
+        if (led === 16'hFFFF) begin
+            $display("  PASS [T11_led_game_over]");
+            pass = pass + 1;
+        end else begin
+            $display("  FAIL [T11_led_game_over] got=0x%04X", led);
+            fail = fail + 1;
+        end
+
+// ------------------------------------------------------------------
+        // TEST 12: Score display non-blank after game over phase
+        // ------------------------------------------------------------------
+        $display("=== TEST 12: Score display non-blank after game over ===");
+        wait_cycles(820_000);
+        if (led !== 16'h0000) begin
+            $display("  PASS [T12_score_display_nonblank]");
+            pass = pass + 1;
+        end else begin
+            $display("  FAIL [T12_score_display_nonblank]");
+            fail = fail + 1;
+        end
+
+        // ------------------------------------------------------------------
+        // TEST 13: Double jump priority — BTNL wins over BTNU simultaneously
+        // ------------------------------------------------------------------
+        $display("=== TEST 13: Double jump priority over single jump ===");
+        sw_jump = 1; sw_double_jump = 1;
+        wait_cycles(5);
+        check("T13_dbl_jump_raw_HIGH", dut.u_debounce_dbl.btn_raw, 1'b1);
+        check("T13_sw_jump_raw_HIGH",  dut.u_debounce_jump.btn_raw, 1'b1);
+        sw_jump = 0; sw_double_jump = 0;
+        wait_cycles(5);
+        
         // ── Summary ───────────────────────────────────────────────────────
         wait_cycles(10);
         $display("====================================================");

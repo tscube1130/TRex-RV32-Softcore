@@ -78,7 +78,7 @@ module mmio_decoder (
     // -----------------------------------------------------------------------
     output reg  [31:0] seg_data0,          // digits 3..0
     output reg  [31:0] seg_data1,          // digits 7..4
-
+   output reg  [1:0]  audio_ev,          // To audio driver: 01=jump, 10=crash
     // -----------------------------------------------------------------------
     // From peripherals (feed read mux)
     // -----------------------------------------------------------------------
@@ -97,6 +97,7 @@ module mmio_decoder (
     localparam [31:0] MMIO_LED_W   = 32'h0000_200C;
     localparam [31:0] MMIO_SEG_W0  = 32'h0000_2010;
     localparam [31:0] MMIO_SEG_W1  = 32'h0000_2014;
+    localparam [31:0] MMIO_AUDIO   = 32'h0000_2018;
 
     // -----------------------------------------------------------------------
     // Region detection — qualified write requires wstrb != 0
@@ -124,9 +125,16 @@ module mmio_decoder (
     // -----------------------------------------------------------------------
     always @(posedge clk or negedge reset) begin
         if (!reset) begin
+            audio_ev  <= 2'b00;
             seg_data0 <= 32'hAAAA_AAAA;   // all BLANK at reset (0xA per nibble)
             seg_data1 <= 32'hAAAA_AAAA;
         end else begin
+            // Audio trigger - latch the event code for one cycle
+            if (is_mmio_write && dmem_write_valid && (dmem_waddr == MMIO_AUDIO))
+                audio_ev <= dmem_wdata[1:0];
+            else
+                audio_ev <= 2'b00; // auto-clear so sound triggers once per write
+
             if (is_mmio_write && dmem_write_valid && (dmem_waddr == MMIO_SEG_W0))
                 seg_data0 <= dmem_wdata;
             if (is_mmio_write && dmem_write_valid && (dmem_waddr == MMIO_SEG_W1))
