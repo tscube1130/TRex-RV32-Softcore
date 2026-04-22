@@ -4,6 +4,8 @@ vivado*.jou
 vivado*.log
 vivado_pid*.str
 dfx_runtime.txt
+hs_err_pid*.log
+hs_err_pid*.dmp
 
 # Optional local editor/OS noise
 .DS_Store

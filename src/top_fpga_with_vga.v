@@ -26,11 +26,15 @@ module top_fpga_with_vga #(
     input  wire        vga_duck,
     input  wire        vga_restart,
 
-    // Existing outputs
+    // Existing outputs (blanked in VGA mode)
     output wire [6:0]  seg,
     output wire [7:0]  an,
     output wire        dp,
     output wire [15:0] led,
+
+    // Audio output from existing CPU game path
+    output wire        audio_out,
+    output wire        audio_en,
 
     // VGA outputs (separate path)
     output wire        Hsync,
@@ -43,8 +47,12 @@ module top_fpga_with_vga #(
     output wire        vga_collision_led
 );
 
+    wire [6:0] seg_cpu;
+    wire [7:0] an_cpu;
+    wire       dp_cpu;
+
     // -------------------------------------------------------------------------
-    // Existing project top (unchanged behavior)
+    // Existing project top (kept instantiated for compatibility)
     // -------------------------------------------------------------------------
     top_fpga #(
         .IMEMSIZE(IMEMSIZE),
@@ -56,10 +64,12 @@ module top_fpga_with_vga #(
         .reset(reset),
         .sw_jump(sw_jump),
         .sw_double_jump(sw_double_jump),
-        .seg(seg),
-        .an(an),
-        .dp(dp),
-        .led(led)
+        .seg(seg_cpu),
+        .an(an_cpu),
+        .dp(dp_cpu),
+        .led(led),
+        .audio_out(audio_out),
+        .audio_en(audio_en)
     );
 
     // -------------------------------------------------------------------------
@@ -80,5 +90,10 @@ module top_fpga_with_vga #(
         .run(vga_run),
         .dead(vga_dead)
     );
+
+    // Disable 7-seg display when the VGA-integrated top is used.
+    assign seg = 7'b1111111;
+    assign an = 8'b11111111;
+    assign dp = 1'b1;
 
 endmodule
