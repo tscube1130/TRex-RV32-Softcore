@@ -1,10 +1,10 @@
 module ScoreBoardDelegate #(parameter ratio=1)(
-	input wire ScoreClock,
-	input wire rst,
+        input wire frameClk,
+        input wire rst,
     input wire [1:0] gameState,
-	input wire [10:0] vgaX,
-	input wire [8:0] vgaY,
-	output wire inGrey);
+        input wire [10:0] vgaX,
+        input wire [8:0] vgaY,
+        output wire inGrey);
 
    localparam ScreenH = 9'd480;
 
@@ -48,12 +48,17 @@ module ScoreBoardDelegate #(parameter ratio=1)(
    reg [3:0]       Num3_SEL;
    reg [3:0]       Num4_SEL;
 
-   always @(posedge ScoreClock or posedge rst) begin
+   // Match CPU game scoring cadence: increment score every 4 frame ticks.
+   localparam SCORE_TICK_FRAMES = 3'd4;
+   reg [2:0] score_tick_timer;
+
+   always @(posedge frameClk or posedge rst) begin
    	if (rst) begin
    		Num1_SEL <= 4'b0;
    		Num2_SEL <= 4'b0;
    		Num3_SEL <= 4'b0;
    		Num4_SEL <= 4'b0;
+                score_tick_timer <= SCORE_TICK_FRAMES;
    	end
 
     else begin
@@ -63,36 +68,41 @@ module ScoreBoardDelegate #(parameter ratio=1)(
             Num2_SEL <= 4'b0;
             Num3_SEL <= 4'b0;
             Num4_SEL <= 4'b0;
+            score_tick_timer <= SCORE_TICK_FRAMES;
           end
         2'b10: begin
-            if (Num4_SEL == 4'd9) begin
-                Num4_SEL <= 0;
-                if (Num3_SEL == 4'd9) begin
-                    Num3_SEL <= 0;
-                    if (Num2_SEL == 4'd9) begin
-                        Num2_SEL <= 0;
-                        if (Num1_SEL == 4'd9) begin
-                             Num1_SEL <= 4'b0;
-                             Num2_SEL <= 4'b0;
-                             Num3_SEL <= 4'b0;
-                             Num4_SEL <= 4'b0;
-                        end
+            if (score_tick_timer > 0)
+                score_tick_timer <= score_tick_timer - 1'b1;
+            else begin
+                score_tick_timer <= SCORE_TICK_FRAMES;
+                if (Num4_SEL == 4'd9) begin
+                    Num4_SEL <= 0;
+                    if (Num3_SEL == 4'd9) begin
+                        Num3_SEL <= 0;
+                        if (Num2_SEL == 4'd9) begin
+                            Num2_SEL <= 0;
+                            if (Num1_SEL == 4'd9) begin
+                                 Num1_SEL <= 4'b0;
+                                 Num2_SEL <= 4'b0;
+                                 Num3_SEL <= 4'b0;
+                                 Num4_SEL <= 4'b0;
+                            end
 
+                            else begin
+                                Num1_SEL <= Num1_SEL + 1;
+                            end
+                        end
                         else begin
-                            Num1_SEL <= Num1_SEL + 1;
+                            Num2_SEL <= Num2_SEL + 1;
                         end
                     end
                     else begin
-                        Num2_SEL <= Num2_SEL + 1;
+                        Num3_SEL <= Num3_SEL + 1;
                     end
                 end
-                else begin
-                    Num3_SEL <= Num3_SEL + 1;
-                end           
-            end  // end if(Num4_SEL == 4'd9)
-            
-            else // Num4_SEL < 9, no carry
-                Num4_SEL <= Num4_SEL + 1;
+                else
+                    Num4_SEL <= Num4_SEL + 1;
+            end
           end
           
           
@@ -101,12 +111,21 @@ module ScoreBoardDelegate #(parameter ratio=1)(
             Num2_SEL <= Num2_SEL;
             Num3_SEL <= Num3_SEL;
             Num4_SEL <= Num4_SEL;
+                        score_tick_timer <= score_tick_timer;
           end
+                    2'b11: begin
+                        Num1_SEL <= Num1_SEL;
+                        Num2_SEL <= Num2_SEL;
+                        Num3_SEL <= Num3_SEL;
+                        Num4_SEL <= Num4_SEL;
+                                                score_tick_timer <= score_tick_timer;
+                    end
           default: begin
            Num1_SEL <= 4'b0;
             Num2_SEL <= 4'b0;
             Num3_SEL <= 4'b0;
             Num4_SEL <= 4'b0;
+                        score_tick_timer <= SCORE_TICK_FRAMES;
           end
         endcase
    	end
