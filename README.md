@@ -1,4 +1,5 @@
 # Project T-Rex — Hardware-Accelerated Chrome Dino
+
 **Group 13 | CS224**
 
 A fully playable Chrome Dino-style game running on a custom 3-stage RV32IM processor on the Nexys A7 FPGA.
@@ -51,20 +52,21 @@ CS224-Project/
 
 ## MMIO Address Map
 
-| Address  | R/W | Name        | Description                                            |
-|----------|-----|-------------|--------------------------------------------------------|
-| `0x2000` | R   | MMIO_SW_R   | bit[0] = jump sticky, bit[1] = double jump sticky      |
-| `0x2004` | W   | MMIO_SW_CLR | Write 1 = clear jump, 2 = clear double jump, 3 = both  |
-| `0x2008` | R   | MMIO_LFSR_R | 16-bit LFSR value (bit[0] = cactus type)               |
-| `0x200C` | W   | MMIO_LED_W  | 16-bit LED pattern (crash animation)                   |
-| `0x2010` | W   | MMIO_SEG_W0 | 7-seg digits 3-0 (nibble-packed)                       |
-| `0x2014` | W   | MMIO_SEG_W1 | 7-seg digits 7-4 (nibble-packed)                       |
+| Address  | R/W | Name        | Description                                           |
+| -------- | --- | ----------- | ----------------------------------------------------- |
+| `0x2000` | R   | MMIO_SW_R   | bit[0] = jump sticky, bit[1] = double jump sticky     |
+| `0x2004` | W   | MMIO_SW_CLR | Write 1 = clear jump, 2 = clear double jump, 3 = both |
+| `0x2008` | R   | MMIO_LFSR_R | 16-bit LFSR value (bit[0] = cactus type)              |
+| `0x200C` | W   | MMIO_LED_W  | 16-bit LED pattern (crash animation)                  |
+| `0x2010` | W   | MMIO_SEG_W0 | 7-seg digits 3-0 (nibble-packed)                      |
+| `0x2014` | W   | MMIO_SEG_W1 | 7-seg digits 7-4 (nibble-packed)                      |
 
 ---
 
 ## Building and Flashing (Vivado)
 
 ### Prerequisites
+
 - Vivado 2020.2 or later
 - RISC-V toolchain: riscv32-unknown-elf-gcc with -march=rv32im
 - Python 3 (for bin2hex.py)
@@ -93,7 +95,7 @@ Flow → Run Synthesis → Run Implementation → Generate Bitstream
 Expected resource utilization (Nexys A7-100T):
 
 | Resource | Available | Estimated | Utilization |
-|----------|-----------|-----------|-------------|
+| -------- | --------- | --------- | ----------- |
 | BRAM     | 135       | ~8        | ~6%         |
 | DSP      | 240       | ~4        | ~2%         |
 | LUT      | 63,400    | ~3,800    | ~6%         |
@@ -111,16 +113,14 @@ Hardware Manager → Open Target → Auto Connect → Program Device
 
 CPU pipeline runs on a divided clock (inline in top_fpga.v). Change DIV_COUNT to adjust speed:
 
-| DIV_COUNT    | CPU Clock | Use Case              |
-|--------------|-----------|-----------------------|
-| 50_000_000   | 1 Hz      | Visible debug (slow)  |
-| 500_000      | 100 Hz    | Fast debug            |
-| 5_000        | 10 kHz    | Functional test       |
-| 50           | 1 MHz     | Near-real performance |
+| DIV_COUNT  | CPU Clock | Use Case              |
+| ---------- | --------- | --------------------- |
+| 50_000_000 | 1 Hz      | Visible debug (slow)  |
+| 500_000    | 100 Hz    | Fast debug            |
+| 5_000      | 10 kHz    | Functional test       |
+| 50         | 1 MHz     | Near-real performance |
 
 ---
-
-
 
 ---
 
@@ -128,3 +128,34 @@ CPU pipeline runs on a divided clock (inline in top_fpga.v). Change DIV_COUNT to
 
 https://github.com/sanjeebani14/CS224-Project
 
+---
+
+
+### Added source folder
+
+- `src/vga_trex/` contains the VGA game modules (`TRex_top`, `VGA`, delegates, and draw modules).
+
+### Added dual top module
+
+- `src/top_fpga_with_vga.v`
+
+This top instantiates both:
+
+1. `top_fpga` (existing 7-seg/LED CPU game path)
+2. `TRexTop` (separate VGA path)
+
+### New ports in the dual top
+
+- VGA controls: `vga_duck`, `vga_restart`
+- VGA outputs: `Hsync`, `Vsync`, `vgaRed[2:0]`, `vgaGreen[2:0]`, `vgaBlue[1:0]`
+- VGA status: `vga_run`, `vga_dead`, `vga_collision_led`
+
+### Constraints for VGA
+
+- Keep using `constraints/nexys_a7.xdc` for existing signals.
+- Fill pin mappings in `constraints/nexys_a7_vga_template.xdc` using the official Nexys A7 master XDC.
+
+### Build choice
+
+- Existing flow (unchanged): set top to `top_fpga.v`.
+- New VGA+existing flow: set top to `top_fpga_with_vga.v` and include completed VGA constraints.
