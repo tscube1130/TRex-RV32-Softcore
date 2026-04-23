@@ -2,6 +2,7 @@ module ScoreBoardDelegate #(parameter ratio=1)(
         input wire frameClk,
         input wire rst,
     input wire [1:0] gameState,
+    input wire [13:0] score_value,
         input wire [10:0] vgaX,
         input wire [8:0] vgaY,
         output wire inGrey);
@@ -48,88 +49,25 @@ module ScoreBoardDelegate #(parameter ratio=1)(
    reg [3:0]       Num3_SEL;
    reg [3:0]       Num4_SEL;
 
-   // Match CPU game scoring cadence: increment score every 4 frame ticks.
-   localparam SCORE_TICK_FRAMES = 3'd4;
-   reg [2:0] score_tick_timer;
+   wire [13:0] score_display = score_value % 14'd10000;
+   wire [3:0] score_thousands = score_display / 14'd1000;
+   wire [3:0] score_hundreds = (score_display % 14'd1000) / 14'd100;
+   wire [3:0] score_tens = (score_display % 14'd100) / 14'd10;
+   wire [3:0] score_ones = score_display % 14'd10;
 
-   always @(posedge frameClk or posedge rst) begin
-   	if (rst) begin
-   		Num1_SEL <= 4'b0;
-   		Num2_SEL <= 4'b0;
-   		Num3_SEL <= 4'b0;
-   		Num4_SEL <= 4'b0;
-                score_tick_timer <= SCORE_TICK_FRAMES;
-   	end
-
-    else begin
-        case (gameState)
-        2'b00: begin
-            Num1_SEL <= 4'b0;
-            Num2_SEL <= 4'b0;
-            Num3_SEL <= 4'b0;
-            Num4_SEL <= 4'b0;
-            score_tick_timer <= SCORE_TICK_FRAMES;
-          end
-        2'b10: begin
-            if (score_tick_timer > 0)
-                score_tick_timer <= score_tick_timer - 1'b1;
-            else begin
-                score_tick_timer <= SCORE_TICK_FRAMES;
-                if (Num4_SEL == 4'd9) begin
-                    Num4_SEL <= 0;
-                    if (Num3_SEL == 4'd9) begin
-                        Num3_SEL <= 0;
-                        if (Num2_SEL == 4'd9) begin
-                            Num2_SEL <= 0;
-                            if (Num1_SEL == 4'd9) begin
-                                 Num1_SEL <= 4'b0;
-                                 Num2_SEL <= 4'b0;
-                                 Num3_SEL <= 4'b0;
-                                 Num4_SEL <= 4'b0;
-                            end
-
-                            else begin
-                                Num1_SEL <= Num1_SEL + 1;
-                            end
-                        end
-                        else begin
-                            Num2_SEL <= Num2_SEL + 1;
-                        end
-                    end
-                    else begin
-                        Num3_SEL <= Num3_SEL + 1;
-                    end
-                end
-                else
-                    Num4_SEL <= Num4_SEL + 1;
-            end
-          end
-          
-          
-          2'b01: begin
-            Num1_SEL <= Num1_SEL;
-            Num2_SEL <= Num2_SEL;
-            Num3_SEL <= Num3_SEL;
-            Num4_SEL <= Num4_SEL;
-                        score_tick_timer <= score_tick_timer;
-          end
-                    2'b11: begin
-                        Num1_SEL <= Num1_SEL;
-                        Num2_SEL <= Num2_SEL;
-                        Num3_SEL <= Num3_SEL;
-                        Num4_SEL <= Num4_SEL;
-                                                score_tick_timer <= score_tick_timer;
-                    end
-          default: begin
-           Num1_SEL <= 4'b0;
-            Num2_SEL <= 4'b0;
-            Num3_SEL <= 4'b0;
-            Num4_SEL <= 4'b0;
-                        score_tick_timer <= SCORE_TICK_FRAMES;
-          end
-        endcase
-   	end
-
+   always @(*) begin
+      if (rst || (gameState == 2'b00)) begin
+         Num1_SEL = 4'd0;
+         Num2_SEL = 4'd0;
+         Num3_SEL = 4'd0;
+         Num4_SEL = 4'd0;
+      end
+      else begin
+         Num1_SEL = score_thousands;
+         Num2_SEL = score_hundreds;
+         Num3_SEL = score_tens;
+         Num4_SEL = score_ones;
+      end
    end
 
    drawNumber #(.ratio(ratio))

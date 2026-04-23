@@ -7,6 +7,18 @@ dfx_runtime.txt
 hs_err_pid*.log
 hs_err_pid*.dmp
 
+# Vivado/XSim simulation artifacts
+.Xil/
+xsim.dir/
+xvlog.log
+xvlog.pb
+xelab.log
+xelab.pb
+xsim.log
+xsim.jou
+*.wdb
+*.vcd
+
 # Optional local editor/OS noise
 .DS_Store
 Thumbs.db

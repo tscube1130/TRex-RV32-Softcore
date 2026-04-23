@@ -4,6 +4,8 @@ module TRexTop(
 	       input wire 	 duckButton,
 	       input wire 	 jumpButton,
            input wire    restart,
+         input wire [13:0] score_value_i,
+         output wire       score_tick_o,
 	       output wire 	 Hsync,
 	       output wire 	 Vsync,
 	       output reg [2:0] vgaRed,
@@ -249,10 +251,37 @@ module TRexTop(
    /* Horizon movement */
 		
    wire ScoreBoard_inGrey;
+  localparam SCORE_TICK_FRAMES = 3'd4;
+  reg [2:0] score_tick_timer;
+  reg score_tick_pulse;
+
+  always @(posedge Frame_Clk or posedge rst) begin
+    if (rst) begin
+      score_tick_timer <= SCORE_TICK_FRAMES;
+      score_tick_pulse <= 1'b0;
+    end
+    else begin
+      score_tick_pulse <= 1'b0;
+      if (gameState == 2'b00) begin
+        score_tick_timer <= SCORE_TICK_FRAMES;
+      end
+      else if (gameState == 2'b10) begin
+        if (score_tick_timer > 0)
+          score_tick_timer <= score_tick_timer - 1'b1;
+        else begin
+          score_tick_timer <= SCORE_TICK_FRAMES;
+          score_tick_pulse <= 1'b1;
+        end
+      end
+    end
+  end
+
+  assign score_tick_o = score_tick_pulse;
 
   ScoreBoardDelegate SBD(.frameClk(Frame_Clk),
                           .rst(rst),
                           .gameState(gameState),
+                  .score_value(score_value_i),
                           .vgaX(x),
                           .vgaY(y),
                           .inGrey(ScoreBoard_inGrey));

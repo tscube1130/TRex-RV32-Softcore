@@ -50,6 +50,17 @@ module top_fpga_with_vga #(
     wire [6:0] seg_cpu;
     wire [7:0] an_cpu;
     wire       dp_cpu;
+    wire       vga_score_tick;
+    wire [13:0] vga_score_value;
+
+    vga_score_cpu_side u_vga_cpu_score (
+        .clk(clk),
+        .rst(reset),
+        .game_run(vga_run),
+        .game_dead(vga_dead),
+        .score_tick_i(vga_score_tick),
+        .score_value_o(vga_score_value)
+    );
 
     // -------------------------------------------------------------------------
     // Existing project top (kept instantiated for compatibility)
@@ -81,6 +92,8 @@ module top_fpga_with_vga #(
         .duckButton(vga_duck),
         .jumpButton(sw_jump),
         .restart(vga_restart),
+        .score_value_i(vga_score_value),
+        .score_tick_o(vga_score_tick),
         .Hsync(Hsync),
         .Vsync(Vsync),
         .vgaRed(vgaRed),
