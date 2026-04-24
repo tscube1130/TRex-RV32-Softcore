@@ -6,10 +6,11 @@ A fully playable Chrome Dino-style game running on a custom 3-stage RV32IM proce
 
 What This Is?
 Project T-Rex extends a baseline 3-stage RV32I pipeline with:
-
 RV32M arithmetic — MUL (1-cycle DSP), DIV (32-cycle iterative FSM), custom MAC accumulator
 5 custom MMIO peripherals — sticky debouncer, 16-bit LFSR, 8-digit 7-segment mux, LED controller, audio PWM driver
 Bare-metal C game loop — collision detection, LFSR obstacle spawn, BCD scoring, audio events
+Multiplayer — two Nexys A7 boards linked via PMOD GPIO (pulse protocol)
+
 ---
 
 ## Repository Structure
@@ -147,41 +148,11 @@ CPU pipeline runs on a divided clock (inline in top_fpga.v). Change DIV_COUNT to
 | 5_000      | 10 kHz    | Functional test       |
 | 50         | 1 MHz     | Near-real performance |
 
----
-
----
 
 
 
 ---
 
 
-### Added source folder
 
-- `src/vga_trex/` contains the VGA game modules (`TRex_top`, `VGA`, delegates, and draw modules).
-
-### Added dual top module
-
-- `src/top_fpga_with_vga.v`
-
-This top instantiates both:
-
-1. `top_fpga` (existing 7-seg/LED CPU game path)
-2. `TRexTop` (separate VGA path)
-
-### New ports in the dual top
-
-- VGA controls: `vga_duck`, `vga_restart`
-- VGA outputs: `Hsync`, `Vsync`, `vgaRed[2:0]`, `vgaGreen[2:0]`, `vgaBlue[1:0]`
-- VGA status: `vga_run`, `vga_dead`, `vga_collision_led`
-
-### Constraints for VGA
-
-- Keep using `constraints/nexys_a7.xdc` for existing signals.
-- Fill pin mappings in `constraints/nexys_a7_vga_template.xdc` using the official Nexys A7 master XDC.
-
-### Build choice
-
-- Existing flow (unchanged): set top to `top_fpga.v`.
-- New VGA+existing flow: set top to `top_fpga_with_vga.v` and include completed VGA constraints.
 
