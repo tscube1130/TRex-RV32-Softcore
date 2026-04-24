@@ -15,64 +15,103 @@ Multiplayer — two Nexys A7 boards linked via PMOD GPIO (pulse protocol)
 
 ## Repository Structure
 
-```
-CS224-Project/
-├── src/
-│   ├── 3-stage-pipeline/
-│   │   ├── pipeline.v
-│   │   ├── IF_ID.v
-│   │   ├── execute.v
-│   │   ├── memory.v
-│   │   ├── wb.v
-│   │   ├── opcode.vh
-│   │   └── top_fpga.v          # FPGA top-level (7-seg/LED game path)
-│   ├── vga_trex/               # VGA game modules
-│   │   ├── TRex_top.v
-│   │   ├── VGA.v
-│   │   ├── DinoFSM.v
-│   │   ├── drawDino.v
-│   │   ├── drawObstacle.v
-│   │   ├── drawBackGround.v
-│   │   ├── drawNumber.v
-│   │   ├── ScoreBoardDelegate.v
-│   │   ├── ObstaclesDelegate.v
-│   │   ├── gameDelegate.v
-│   │   ├── TRexDelegate.v
-│   │   ├── vga_score_cpu_side.v
-│   │   ├── BackGroundDelegate.v
-│   │   ├── debouncer.v
-│   │   ├── vgaClk.v
-│   │   └── ClockDivider.v
-│   ├── top_fpga_with_vga.v     # Dual-path top: 7-seg + VGA game
-│   ├── math_coproc.v           # RV32M: MUL / DIV / MAC unit
-│   ├── mmio_decoder.v          # Memory-mapped I/O address decoder
-│   ├── seg7_mux.v              # 8-digit 7-segment display multiplexer
-│   ├── lfsr16.v                # 16-bit LFSR (random cactus generation)
-│   ├── debouncer.v             # Sticky button debouncer (CPU path)
-│   ├── led_ctrl.v              # LED crash animation controller
-│   └── audio_driver.v          # Audio output driver
-├── tb/
-│   ├── tb_math_coproc.v
-│   ├── tb_div.v
-│   ├── tb_pipeline_math.v
-│   ├── tb_pipeline_div.v
-│   ├── tb_mmio_decoder.v
-│   ├── tb_seg7_mux.v
-│   ├── tb_lfsr16.v
-│   ├── tb_debouncer.v
-│   ├── tb_led_ctrl.v
-│   └── tb_top_fpga.v           # Top-level integration smoke test
+```CS224-Project/
+├── README.md
+├── dfx_runtime.txt
+├── vivado.jou
+├── build/
+│   └── vivado_vga/
+│       └── trex_dino_nexys_a7_vga.xpr
 ├── constraints/
 │   ├── nexys_a7.xdc
-│   └── nexys_a7_vga_template.xdc   # VGA pin template (to be completed)
+│   └── nexys_a7_vga_template.xdc
+├── docs/
+│   └── LFSR_DISPLAY_RUN.md
+├── Multiplayer/
+│   ├── constraints/
+│   │   └── nexys_a7.xdc
+│   ├── software/
+│   │   └── mem_generator/
+│   │       ├── crt0.S
+│   │       ├── Makefile
+│   │       ├── c_workloads/
+│   │       └── imem_dmem/
+│   └── src/
+│       ├── 3-stage-pipeline/
+│       │   ├── execute.v
+│       │   ├── IF_ID.v
+│       │   ├── memory.v
+│       │   ├── opcode.vh
+│       │   ├── pipeline.v
+│       │   ├── top_fpga.v
+│       │   └── wb.v
+│       ├── audio_driver.v
+│       ├── debouncer.v
+│       ├── led_ctrl.v
+│       ├── lfsr16.v
+│       ├── math_coproc.v
+│       ├── mmio_decoder.v
+│       └── seg7_mux.v
+├── scripts/
+│   ├── build_nexys_a7.tcl
+│   ├── build_nexys_a7_noclean.tcl
+│   ├── build_nexys_a7_with_vga.tcl
+│   ├── debug_topfpga_synth.tcl
+│   ├── program_nexys_a7.tcl
+│   └── program_nexys_a7_with_vga.tcl
 ├── software/
 │   └── mem_generator/
+│       ├── crt0.S
 │       ├── Makefile
 │       ├── c_workloads/
 │       └── imem_dmem/
 │           └── bin2hex.py
-└── docs/
-    └── LFSR_DISPLAY_RUN.md
+├── src/
+│   ├── 3-stage-pipeline/
+│   │   ├── execute.v
+│   │   ├── IF_ID.v
+│   │   ├── memory.v
+│   │   ├── opcode.vh
+│   │   ├── pipeline.v
+│   │   ├── top_fpga.v
+│   │   └── wb.v
+│   ├── audio_driver.v
+│   ├── debouncer.v
+│   ├── led_ctrl.v
+│   ├── lfsr16.v
+│   ├── math_coproc.v
+│   ├── mmio_decoder.v
+│   ├── seg7_mux.v
+│   ├── top_fpga_with_vga.v
+│   └── vga_trex/
+│       ├── BackGroundDelegate.v
+│       ├── ClockDivider.v
+│       ├── DinoFSM.v
+│       ├── ObstaclesDelegate.v
+│       ├── ScoreBoardDelegate.v
+│       ├── TRexDelegate.v
+│       ├── TRex_top.v
+│       ├── VGA.v
+│       ├── debouncer.v
+│       ├── drawBackGround.v
+│       ├── drawDino.v
+│       ├── drawNumber.v
+│       ├── drawObstacle.v
+│       ├── gameDelegate.v
+│       ├── vgaClk.v
+│       └── vga_score_cpu_side.v
+└── tb/
+    ├── tb_debouncer.v
+    ├── tb_div.v
+    ├── tb_led_ctrl.v
+    ├── tb_lfsr16.v
+    ├── tb_math_coproc.v
+    ├── tb_mmio_decoder.v
+    ├── tb_pipeline_div.v
+    ├── tb_pipeline_math.v
+    ├── tb_seg7_mux.v
+    ├── tb_top_fpga.v
+    └── tb_vga_trex_top.v
 ```
 
 ---
