@@ -4,8 +4,6 @@
 
 A fully playable Chrome Dino-style game running on a custom 3-stage RV32IM processor on the Nexys A7 FPGA.
 
----
-
 ## Repository Structure
 
 ```
@@ -18,13 +16,32 @@ CS224-Project/
 │   │   ├── memory.v
 │   │   ├── wb.v
 │   │   ├── opcode.vh
-│   │   └── top_fpga.v          # FPGA top-level (all peripherals wired)
+│   │   └── top_fpga.v          # FPGA top-level (7-seg/LED game path)
+│   ├── vga_trex/               # VGA game modules
+│   │   ├── TRex_top.v
+│   │   ├── VGA.v
+│   │   ├── DinoFSM.v
+│   │   ├── drawDino.v
+│   │   ├── drawObstacle.v
+│   │   ├── drawBackGround.v
+│   │   ├── drawNumber.v
+│   │   ├── ScoreBoardDelegate.v
+│   │   ├── ObstaclesDelegate.v
+│   │   ├── gameDelegate.v
+│   │   ├── TRexDelegate.v
+│   │   ├── vga_score_cpu_side.v
+│   │   ├── BackGroundDelegate.v
+│   │   ├── debouncer.v
+│   │   ├── vgaClk.v
+│   │   └── ClockDivider.v
+│   ├── top_fpga_with_vga.v     # Dual-path top: 7-seg + VGA game
 │   ├── math_coproc.v           # RV32M: MUL / DIV / MAC unit
 │   ├── mmio_decoder.v          # Memory-mapped I/O address decoder
 │   ├── seg7_mux.v              # 8-digit 7-segment display multiplexer
 │   ├── lfsr16.v                # 16-bit LFSR (random cactus generation)
-│   ├── debouncer.v             # Sticky button debouncer
-│   └── led_ctrl.v              # LED crash animation controller
+│   ├── debouncer.v             # Sticky button debouncer (CPU path)
+│   ├── led_ctrl.v              # LED crash animation controller
+│   └── audio_driver.v          # Audio output driver
 ├── tb/
 │   ├── tb_math_coproc.v
 │   ├── tb_div.v
@@ -37,7 +54,8 @@ CS224-Project/
 │   ├── tb_led_ctrl.v
 │   └── tb_top_fpga.v           # Top-level integration smoke test
 ├── constraints/
-│   └── nexys_a7.xdc            # Nexys A7 pin mapping and timing constraints
+│   ├── nexys_a7.xdc
+│   └── nexys_a7_vga_template.xdc   # VGA pin template (to be completed)
 ├── software/
 │   └── mem_generator/
 │       ├── Makefile
@@ -45,7 +63,7 @@ CS224-Project/
 │       └── imem_dmem/
 │           └── bin2hex.py
 └── docs/
-    └── CS224_Group-13_Project_Abstract.pdf
+    └── LFSR_DISPLAY_RUN.md
 ```
 
 ---
@@ -60,6 +78,7 @@ CS224-Project/
 | `0x200C` | W   | MMIO_LED_W  | 16-bit LED pattern (crash animation)                  |
 | `0x2010` | W   | MMIO_SEG_W0 | 7-seg digits 3-0 (nibble-packed)                      |
 | `0x2014` | W   | MMIO_SEG_W1 | 7-seg digits 7-4 (nibble-packed)                      |
+| `0x2018` | W   | MMIO_AUDIO  | Audio trigger: bit[0]=jump sound, bit[1]=crash sound  |
 
 ---
 
@@ -124,9 +143,7 @@ CPU pipeline runs on a divided clock (inline in top_fpga.v). Change DIV_COUNT to
 
 ---
 
-## GitHub
 
-https://github.com/sanjeebani14/CS224-Project
 
 ---
 
@@ -159,3 +176,4 @@ This top instantiates both:
 
 - Existing flow (unchanged): set top to `top_fpga.v`.
 - New VGA+existing flow: set top to `top_fpga_with_vga.v` and include completed VGA constraints.
+
