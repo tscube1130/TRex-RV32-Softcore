@@ -4,6 +4,14 @@
 
 A fully playable Chrome Dino-style game running on a custom 3-stage RV32IM processor on the Nexys A7 FPGA.
 
+What This Is?
+Project T-Rex extends a baseline 3-stage RV32I pipeline with:
+
+RV32M arithmetic — MUL (1-cycle DSP), DIV (32-cycle iterative FSM), custom MAC accumulator
+5 custom MMIO peripherals — sticky debouncer, 16-bit LFSR, 8-digit 7-segment mux, LED controller, audio PWM driver
+Bare-metal C game loop — collision detection, LFSR obstacle spawn, BCD scoring, audio events
+---
+
 ## Repository Structure
 
 ```
