@@ -130,34 +130,70 @@ Multiplayer — two Nexys A7 boards linked via PMOD GPIO (pulse protocol)
 
 ---
 
-## Building and Flashing (Vivado)
+## Build and Run
 
 ### Prerequisites
 
 - Vivado 2020.2 or later
-- RISC-V toolchain: riscv32-unknown-elf-gcc with -march=rv32im
-- Python 3 (for bin2hex.py)
+- RISC-V toolchain providing `riscv64-unknown-elf-gcc`
+- Python 3 for `bin2hex.py`
 
-### Step 1 — Compile C Game Code
+### 1. Compile the game workload
+
+The software lives under `software/mem_generator`. The default workload is `code_dino_game`.
 
 ```bash
 cd software/mem_generator
-make WORKLOAD=code_dino_game
+make
 ```
 
-### Step 2 — Vivado Project Setup
+To build a different workload, pass `WORKLOAD` explicitly:
 
-1. Create new project targeting Nexys A7-100T (xc7a100tcsg324-1)
-2. Add all .v and .vh files from src/ as design sources
-3. Set top_fpga.v as the top module
-4. Add constraints/nexys_a7.xdc as constraint file
-5. Load imem.hex and dmem.hex into BRAM initialization
-
-### Step 3 — Synthesize and Implement
-
+```bash
+make WORKLOAD=code_factorial
 ```
-Flow → Run Synthesis → Run Implementation → Generate Bitstream
+
+This generates `imem_dmem/imem.hex` and `imem_dmem/dmem.hex`, which Vivado loads into BRAM during synthesis.
+
+### 2. Build the FPGA bitstream
+
+From the repository root, run the Vivado batch script for the target you want:
+
+```bash
+C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/build_nexys_a7.tcl
 ```
+
+Use the VGA build if you want the dual-output top level instead:
+
+```bash
+C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/build_nexys_a7_with_vga.tcl
+```
+
+The non-VGA flow writes its project under `build/vivado/`, and the VGA flow writes under `build/vivado_vga/`.
+
+### 3. Program the Nexys A7
+
+After the bitstream is generated, program the board with the matching script:
+
+```bash
+C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/program_nexys_a7.tcl
+```
+
+For the VGA build, use:
+
+```bash
+C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/program_nexys_a7_with_vga.tcl
+```
+
+If you prefer the Vivado GUI, you can also open the generated project in `build/` or `build/vivado_vga/`, run Synthesis, run Implementation, and then Generate Bitstream before programming the device through Hardware Manager.
+
+### Notes
+
+- Target board: Nexys A7-100T (`xc7a100tcsg324-1`)
+- The CPU game path uses `src/top_fpga.v`; the VGA build uses `src/top_fpga_with_vga.v`
+- If you change the C workload, rebuild `imem.hex` and `dmem.hex` before rerunning Vivado
+- The multiplayer hardware variant lives under `Multiplayer/`; use `Multiplayer/src/3-stage-pipeline/top_fpga.v` as the top module and `Multiplayer/constraints/nexys_a7.xdc` as the board constraints
+- The multiplayer software flow still starts with `cd Multiplayer/software/mem_generator && make`, which produces the same `imem.hex` and `dmem.hex` files for BRAM initialization
 
 Expected resource utilization (Nexys A7-100T):
 
@@ -167,12 +203,6 @@ Expected resource utilization (Nexys A7-100T):
 | DSP      | 240       | ~4        | ~2%         |
 | LUT      | 63,400    | ~3,800    | ~6%         |
 | FF       | 126,800   | ~4,500    | ~4%         |
-
-### Step 4 — Program Board
-
-```
-Hardware Manager → Open Target → Auto Connect → Program Device
-```
 
 ---
 
@@ -187,11 +217,4 @@ CPU pipeline runs on a divided clock (inline in top_fpga.v). Change DIV_COUNT to
 | 5_000      | 10 kHz    | Functional test       |
 | 50         | 1 MHz     | Near-real performance |
 
-
-
-
 ---
-
-
-
-
