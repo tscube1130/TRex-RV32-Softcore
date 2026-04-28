@@ -84,22 +84,6 @@ Multiplayer — two Nexys A7 boards linked via PMOD GPIO (pulse protocol)
 │   ├── seg7_mux.v
 │   ├── top_fpga_with_vga.v
 │   └── vga_trex/
-│       ├── BackGroundDelegate.v
-│       ├── ClockDivider.v
-│       ├── DinoFSM.v
-│       ├── ObstaclesDelegate.v
-│       ├── ScoreBoardDelegate.v
-│       ├── TRexDelegate.v
-│       ├── TRex_top.v
-│       ├── VGA.v
-│       ├── debouncer.v
-│       ├── drawBackGround.v
-│       ├── drawDino.v
-│       ├── drawNumber.v
-│       ├── drawObstacle.v
-│       ├── gameDelegate.v
-│       ├── vgaClk.v
-│       └── vga_score_cpu_side.v
 └── tb/
     ├── tb_debouncer.v
     ├── tb_div.v
