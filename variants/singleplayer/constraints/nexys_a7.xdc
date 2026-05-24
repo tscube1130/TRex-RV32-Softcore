@@ -2,7 +2,6 @@
 ## nexys_a7.xdc — Project T-Rex — Nexys A7-100T Pin Constraints
 ## =============================================================================
 ## Board  : Digilent Nexys A7-100T (xc7a100tcsg324-1)
-## Author : Surbhi Kumari (FPGA Integration)
 ##
 ## Signals mapped:
 ##   clk            → W5        100 MHz board oscillator

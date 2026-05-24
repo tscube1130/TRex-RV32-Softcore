@@ -1,5 +1,5 @@
 // =============================================================================
-// seg7_mux.v — 8-Digit 7-Segment Display Multiplexer (BANK SWITCHING EDITION)
+// seg7_mux.v — 8-Digit 7-Segment Display Multiplexer (BANK SWITCHING EDITION
 // =============================================================================
 `timescale 1ns/1ps
 
