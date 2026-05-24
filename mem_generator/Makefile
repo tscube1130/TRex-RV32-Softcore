@@ -1,11 +1,12 @@
-# RISC-V workload build helper for mem_generator
-# Usage:
-#   make list
-#   make
-#   make WORKLOAD=code_factorial
-#   make WORKLOAD=code_dot_product
+# RISC-V workload build helper
+# Run from mem_generator/:
+#   make                             # builds singleplayer (default)
+#   make VARIANT=multiplayer         # builds multiplayer variant
+#   make WORKLOAD=code_dino_game     # explicit workload name
+#   make list                        # list available workloads for active VARIANT
+#   make clean
 
-# Prefer user-provided TOOLCHAIN, then PATH, then the default AMD Vivado install.
+# ── Toolchain auto-detection ──────────────────────────────────────────────────
 TOOLCHAIN ?=
 
 ifeq ($(strip $(TOOLCHAIN)),)
@@ -20,13 +21,17 @@ $(error Could not find riscv64-unknown-elf-gcc. Set TOOLCHAIN=<prefix> or add it
 endif
 endif
 
-CC       := $(TOOLCHAIN)gcc
-OBJCOPY  := $(TOOLCHAIN)objcopy
-PYTHON   ?= python
+CC      := $(TOOLCHAIN)gcc.exe
+OBJCOPY := $(TOOLCHAIN)objcopy.exe
+PYTHON  ?= python
 
+# ── Variant & workload selection ──────────────────────────────────────────────
+VARIANT  ?= singleplayer
 WORKLOAD ?= code_dino_game
-C_DIR    := c_workloads
-OUT_DIR  := imem_dmem
+
+# C sources live in variants/<VARIANT>/game_loop/ (relative to mem_generator/)
+C_DIR   := ../variants/$(VARIANT)/game_loop
+OUT_DIR := imem_dmem
 
 SRC      := $(C_DIR)/$(WORKLOAD).c
 HDRS     := $(wildcard $(C_DIR)/*.h)
@@ -37,15 +42,19 @@ DMEM_BIN := $(OUT_DIR)/dmem.bin
 IMEM_HEX := $(OUT_DIR)/imem.hex
 DMEM_HEX := $(OUT_DIR)/dmem.hex
 
-CFLAGS   := -O2 -Wall -Wextra -march=rv32im -mabi=ilp32 -ffreestanding -fno-builtin -msmall-data-limit=0
-LDFLAGS  := -nostdlib -nostartfiles -Wl,-e,_start -Wl,-Ttext=0x00000000 -Wl,--defsym=__stack_top=0x00001FF0
+CFLAGS  := -O2 -Wall -Wextra -march=rv32im -mabi=ilp32 \
+           -ffreestanding -fno-builtin -msmall-data-limit=0 \
+           -I$(C_DIR)
+LDFLAGS := -nostdlib -nostartfiles \
+           -Wl,-e,_start -Wl,-Ttext=0x00000000 \
+           -Wl,--defsym=__stack_top=0x00001FF0
 
 .PHONY: all list compile bins hex clean
 
 all: hex
 
 list:
-	@echo "Available workloads:"
+	@echo "Available workloads for VARIANT=$(VARIANT):"
 	@ls $(C_DIR)/*.c | sed -e 's|$(C_DIR)/||' -e 's|\.c$$||'
 
 compile: $(ELF)
@@ -55,16 +64,24 @@ $(ELF): $(SRC) $(HDRS) $(CRT0)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CRT0) $< -o $@
 
 bins: compile
-	$(OBJCOPY) -O binary --only-section=.text --only-section=.text.startup --only-section=.init $(ELF) $(IMEM_BIN)
-	-$(OBJCOPY) -O binary --only-section=.data --only-section=.sdata --only-section=.rodata --only-section=.bss --only-section=.sbss $(ELF) $(DMEM_BIN)
+	$(OBJCOPY) -O binary \
+	    --only-section=.text --only-section=.text.startup --only-section=.init \
+	    $(ELF) $(IMEM_BIN)
+	-$(OBJCOPY) -O binary \
+	    --only-section=.data --only-section=.sdata \
+	    --only-section=.rodata \
+	    --only-section=.bss --only-section=.sbss \
+	    $(ELF) $(DMEM_BIN)
 	@$(PYTHON) -c "from pathlib import Path; Path('$(DMEM_BIN)').touch(exist_ok=True)"
 
 hex: bins
 	@cd $(OUT_DIR) && $(PYTHON) bin2hex.py
-	@echo "Built $(WORKLOAD)"
+	@echo "Built $(VARIANT)/$(WORKLOAD)"
 	@echo "  ELF : $(ELF)"
 	@echo "  IMEM: $(IMEM_HEX)"
 	@echo "  DMEM: $(DMEM_HEX)"
 
 clean:
-	@$(PYTHON) -c "from pathlib import Path; [p.unlink() for ext in ('*.elf', '*.bin', '*.hex') for p in Path('$(OUT_DIR)').glob(ext)]"
+	@$(PYTHON) -c "from pathlib import Path; \
+	    [p.unlink() for ext in ('*.elf','*.bin','*.hex') \
+	     for p in Path('$(OUT_DIR)').glob(ext)]"

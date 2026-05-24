@@ -1,116 +1,256 @@
-# Project T-Rex — Hardware-Accelerated Chrome Dino
+# 🦕 T-Rex RV32IM Softcore
 
-**Group 13 | CS224**
+> A custom 3-stage RISC-V CPU built from RTL, running a Chrome Dino-style game on a Nexys A7 FPGA.
+> Not a simulator. Not a pre-built core. Every pipeline stage, every peripheral, every stall — written from scratch.
 
-A fully playable Chrome Dino-style game running on a custom 3-stage RV32IM processor on the Nexys A7 FPGA.
+![Board](https://img.shields.io/badge/Board-Nexys%20A7--100T-blue)
+![ISA](https://img.shields.io/badge/ISA-RV32IM%20%2B%20custom%20MAC-brightgreen)
+![Language](https://img.shields.io/badge/RTL-Verilog-orange)
+![Software](https://img.shields.io/badge/Software-Bare--metal%20C-yellow)
+![Course](https://img.shields.io/badge/Course-CS224%20HARDWARE%LAB-red)
+![Status](https://img.shields.io/badge/Status-Working%20on%20Hardware-success)
 
-What This Is?
-Project T-Rex extends a baseline 3-stage RV32I pipeline with:
-RV32M arithmetic — MUL (1-cycle DSP), DIV (32-cycle iterative FSM), custom MAC accumulator
-5 custom MMIO peripherals — sticky debouncer, 16-bit LFSR, 8-digit 7-segment mux, LED controller, audio PWM driver
-Bare-metal C game loop — collision detection, LFSR obstacle spawn, BCD scoring, audio events
-Multiplayer — two Nexys A7 boards linked via PMOD GPIO (pulse protocol)
+---
+
+## What Is This
+
+Project T-Rex is a full hardware-software co-design on a Nexys A7-100T FPGA. The CPU is a
+3-stage RV32IM pipeline built entirely in Verilog, extended with a custom math coprocessor
+(single-cycle DSP multiply, 34-cycle iterative divider, MAC accumulator). Running on top of
+it is a bare-metal C game — obstacles spawn via a hardware LFSR, score tracks on an 8-digit
+7-segment display, audio plays on jump and crash events, and a multiplayer mode links two
+boards over PMOD GPIO.
+
+Two clock domains, five custom MMIO peripherals, one instruction rescue buffer, and zero
+operating system.
+
+---
+
+## System Architecture
+
+```
+                    100 MHz Board Clock (clk)
+                           │
+              ┌────────────┴────────────┐
+              │ Clock Divider ÷100      │
+              │ slow_clk ≈ 1 MHz        │
+              └────────────┬────────────┘
+                           │
+        ┌──────────────────┼──────────────────────┐
+        │  RISC-V Pipeline (slow_clk)             │
+        │  ┌──────────────────────────────────┐   │
+        │  │  IF/ID  →  EX  →  WB            │   │
+        │  │         math_coproc              │   │
+        │  │         MUL(1) DIV(34) MAC(1)    │   │
+        │  └──────────────────────────────────┘   │
+        │         │                │              │
+        │       IMEM             DMEM             │
+        │      (BRAM)           (BRAM)            │
+        │                         │              │
+        │                  MMIO Decoder          │
+        │                  0x2000 – 0x201C        │
+        └─────────────────────────────────────────┘
+                           │
+        ┌──────────────────┼──────────────────────┐
+        │  Fast Peripherals (100 MHz)             │
+        │  seg7_mux  lfsr16  debouncer  audio_drv │
+        └──────────────────────────────────────────┘
+```
+
+**Why two clock domains?** The 7-segment mux needs a fast switching rate (125 Hz per digit)
+to appear flicker-free. The LFSR needs to look random. The debouncer needs a 10 ms settle
+window. All of that requires 100 MHz. The pipeline runs at 1 MHz to keep MMIO debugging
+deterministic and to match the game's timing. Fast peripherals are read/written by the CPU
+through memory-mapped registers — the clock crossing is handled by registered latches and
+sticky flags.
+
+---
+
+## Pipeline
+
+### Stages
+
+```
+Cycle N:    [ IF/ID ]
+Cycle N+1:          [ EX ]
+Cycle N+2:                  [ WB ]
+```
+
+Three stages: Instruction Fetch + Decode, Execute (ALU + math_coproc), Writeback.
+Register forwarding handles data hazards. Branch outcomes resolve in EX — one bubble on taken branches.
+
+### Stall and Freeze Logic
+
+DIV is the only multi-cycle instruction. When a `DIV`/`DIVU`/`REM`/`REMU` enters EX:
+
+1. `math_coproc.v` raises `math_stall`
+2. `pipeline.v` converts this to `pipeline_freeze`
+3. `pipeline_freeze` gates: PC advance, IF/ID register, EX stage, WB stage, regfile write enable — everything freezes
+
+The freeze lasts 32 running cycles + 1 DONE cycle = **34 slow-clock cycles total**.
+
+### Instruction Rescue Buffer
+
+Here is the subtle problem: the pipeline's BRAM instruction fetch is registered (1-cycle
+latency). When `pipeline_freeze` asserts mid-fetch, the BRAM output for the *next*
+instruction is already on the wire — but the IF/ID register is frozen and will not capture
+it. On resume, that instruction would be silently lost.
+
+The fix: an **instruction rescue buffer** in `pipeline.v` captures the BRAM read data at
+the moment freeze asserts and holds it. On the first cycle after freeze releases, the
+pipeline reads from the rescue buffer instead of BRAM. No instruction corruption.
+
+### Latency Table
+
+| Instruction Class          | Cycles | Stall? |
+|---------------------------|--------|--------|
+| All RV32I (ADD, LW, BEQ…) | 1      | No     |
+| MUL / MULH / MULHU / MULHSU | 1    | No     |
+| MAC (custom)              | 1      | No     |
+| DIV / DIVU / REM / REMU   | 34     | Yes    |
+
+Effective IPC ≈ 1.0 for non-divide workloads. The game loop calls DIV exactly once per
+frame (speed scaling), so the 34-cycle penalty has no visible impact on gameplay.
+
+---
+
+## Math Coprocessor (`math_coproc.v`)
+
+All RV32M instructions plus one custom extension, sharing a single result mux.
+
+### MUL
+Sign-extends operands to 33 bits to handle all four variants (signed×signed, signed×unsigned,
+unsigned×unsigned). The 66-bit product is computed in a single cycle, mapped to DSP slices
+via `(* use_dsp = "yes" *)`. `MUL` takes the lower 32 bits; `MULH`/`MULHU`/`MULHSU` take
+the upper 32.
+
+### DIV — Iterative Shift-Subtract FSM
+
+```
+        div_start=0          div_start=1
+   ┌──────────────┐      ┌──────────────────┐
+   │  DIV_IDLE    │─────▶│  DIV_RUNNING     │
+   │              │      │  (×32 cycles)    │
+   └──────────────┘      └────────┬─────────┘
+           ▲                      │ count==31
+           │              ┌───────▼─────────┐
+           └──────────────│   DIV_DONE      │
+                          │ math_stall = 0  │
+                          └─────────────────┘
+```
+
+Edge cases resolved combinationally (no stall needed):
+- Divide by zero → quotient = `0xFFFF_FFFF`, remainder = dividend
+- `INT_MIN / -1` signed overflow → quotient = `INT_MIN`, remainder = 0
+
+### MAC — Custom Instruction
+Fuses `MUL` + `ADD` into a single opcode (`funct7 = 0b0100000`). A hidden 32-bit
+accumulator register holds the running sum. `MVACC` reads it back into the register file.
+The accumulator update is gated on `!pipeline_stall` to prevent double-counting during
+freeze cycles.
+
+---
+
+## MMIO Peripheral Map
+
+Both variants share `0x2000–0x2014`. Singleplayer adds audio at `0x2018`; multiplayer
+replaces it with the PMOD net interface.
+
+| Address  | R/W | Name          | Description                                        |
+|----------|-----|---------------|----------------------------------------------------|
+| `0x2000` | R   | `MMIO_SW_R`   | `bit[0]` = jump sticky, `bit[1]` = dbl-jump sticky |
+| `0x2004` | W   | `MMIO_SW_CLR` | Write `1`/`2`/`3` to clear jump/dbl/both           |
+| `0x2008` | R   | `MMIO_LFSR_R` | 16-bit LFSR value (`bit[0]` = cactus type)         |
+| `0x200C` | W   | `MMIO_LED_W`  | 16-bit LED pattern (crash animation)               |
+| `0x2010` | W   | `MMIO_SEG_W0` | 7-seg digits 3–0 (nibble-packed BCD)               |
+| `0x2014` | W   | `MMIO_SEG_W1` | 7-seg digits 7–4 (nibble-packed BCD)               |
+| `0x2018` | W   | `MMIO_AUDIO`  | **SP only** — `bit[0]`=jump, `bit[1]`=crash tone   |
+| `0x2018` | W   | `MMIO_NET_TX` | **MP only** — PMOD TX bit (pulse protocol)         |
+| `0x201C` | R   | `MMIO_NET_RX` | **MP only** — PMOD RX + role switch input          |
+
+### Sticky Debouncer Design
+The debouncer doesn't just clean up bounce — it latches a press in hardware and holds it
+until the CPU explicitly writes to `MMIO_SW_CLR`. This matters because during the 34-cycle
+DIV freeze, the pipeline cannot execute any MMIO reads. A pure polling approach would
+silently drop any button press that arrived in that window. The sticky latch guarantees
+zero lost inputs regardless of pipeline state.
+
+---
+
+## Multiplayer
+
+Two Nexys A7 boards linked via PMOD GPIO. Each board runs an independent game instance;
+a bit-bang pulse protocol synchronises game events (opponent death, LFSR seed) in real time.
+Role (host/client) is determined by a board switch. The multiplayer variant swaps the audio
+peripheral at `0x2018` for the net TX register and adds `0x201C` for RX.
+
+---
+
+## Resource Utilization (Singleplayer, Nexys A7-100T)
+
+| Resource | Used    | Available | Utilization |
+|----------|---------|-----------|-------------|
+| LUT      | ~3,164  | 63,400    | 4.99%       |
+| FF       | ~1,499  | 126,800   | 1.18%       |
+| BRAM     | ~0.5    | 135       | 0.37%       |
+| DSP      | ~5      | 240       | 2.08%       |
 
 ---
 
 ## Repository Structure
 
-```CS224-Project/
-├── README.md
-├── dfx_runtime.txt
-├── vivado.jou
-├── build/
-│   └── vivado_vga/
-│       └── trex_dino_nexys_a7_vga.xpr
-├── constraints/
-│   ├── nexys_a7.xdc
-│   └── nexys_a7_vga_template.xdc
-├── docs/
-│   └── LFSR_DISPLAY_RUN.md
-├── Multiplayer/
-│   ├── constraints/
-│   │   └── nexys_a7.xdc
-│   ├── software/
-│   │   └── mem_generator/
-│   │       ├── crt0.S
-│   │       ├── Makefile
-│   │       ├── c_workloads/
-│   │       └── imem_dmem/
-│   └── src/
-│       ├── 3-stage-pipeline/
-│       │   ├── execute.v
-│       │   ├── IF_ID.v
-│       │   ├── memory.v
-│       │   ├── opcode.vh
-│       │   ├── pipeline.v
-│       │   ├── top_fpga.v
-│       │   └── wb.v
-│       ├── audio_driver.v
-│       ├── debouncer.v
-│       ├── led_ctrl.v
-│       ├── lfsr16.v
-│       ├── math_coproc.v
-│       ├── mmio_decoder.v
-│       └── seg7_mux.v
-├── scripts/
-│   ├── build_nexys_a7.tcl
-│   ├── build_nexys_a7_noclean.tcl
-│   ├── build_nexys_a7_with_vga.tcl
-│   ├── debug_topfpga_synth.tcl
-│   ├── program_nexys_a7.tcl
-│   └── program_nexys_a7_with_vga.tcl
-├── software/
-│   └── mem_generator/
-│       ├── crt0.S
-│       ├── Makefile
-│       ├── c_workloads/
-│       └── imem_dmem/
-│           └── bin2hex.py
-├── src/
-│   ├── 3-stage-pipeline/
-│   │   ├── execute.v
-│   │   ├── IF_ID.v
-│   │   ├── memory.v
-│   │   ├── opcode.vh
-│   │   ├── pipeline.v
-│   │   ├── top_fpga.v
-│   │   └── wb.v
-│   ├── audio_driver.v
-│   ├── debouncer.v
-│   ├── led_ctrl.v
-│   ├── lfsr16.v
-│   ├── math_coproc.v
-│   ├── mmio_decoder.v
-│   ├── seg7_mux.v
-│   ├── top_fpga_with_vga.v
-│   └── vga_trex/
-└── tb/
-    ├── tb_debouncer.v
-    ├── tb_div.v
-    ├── tb_led_ctrl.v
-    ├── tb_lfsr16.v
-    ├── tb_math_coproc.v
-    ├── tb_mmio_decoder.v
-    ├── tb_pipeline_div.v
-    ├── tb_pipeline_math.v
-    ├── tb_seg7_mux.v
-    ├── tb_top_fpga.v
-    └── tb_vga_trex_top.v
 ```
-
----
-
-## MMIO Address Map
-
-| Address  | R/W | Name        | Description                                           |
-| -------- | --- | ----------- | ----------------------------------------------------- |
-| `0x2000` | R   | MMIO_SW_R   | bit[0] = jump sticky, bit[1] = double jump sticky     |
-| `0x2004` | W   | MMIO_SW_CLR | Write 1 = clear jump, 2 = clear double jump, 3 = both |
-| `0x2008` | R   | MMIO_LFSR_R | 16-bit LFSR value (bit[0] = cactus type)              |
-| `0x200C` | W   | MMIO_LED_W  | 16-bit LED pattern (crash animation)                  |
-| `0x2010` | W   | MMIO_SEG_W0 | 7-seg digits 3-0 (nibble-packed)                      |
-| `0x2014` | W   | MMIO_SEG_W1 | 7-seg digits 7-4 (nibble-packed)                      |
-| `0x2018` | W   | MMIO_AUDIO  | Audio trigger: bit[0]=jump sound, bit[1]=crash sound  |
+TRex-RV32-Softcore/
+├── src/
+│   ├── core/                   ← RV32IM pipeline RTL
+│   │   ├── pipeline.v          ← 3-stage top, hazard unit, rescue buffer
+│   │   ├── IF_ID.v             ← IF/ID pipeline register + decode
+│   │   ├── execute.v           ← EX stage, ALU, math_coproc interface
+│   │   ├── memory.v            ← MEM stage, instr_mem, data_mem BRAMs
+│   │   ├── wb.v                ← WB stage, regfile write
+│   │   ├── math_coproc.v       ← MUL (DSP) / DIV (FSM) / MAC accumulator
+│   │   └── opcode.vh           ← ISA defines
+│   └── peripherals/            ← MMIO peripheral RTL
+│       ├── audio_driver.v      ← PWM square-wave tone generator
+│       ├── debouncer.v         ← 2-flop sync + settle counter + sticky latch
+│       ├── led_ctrl.v          ← 16-bit MMIO-writable LED register
+│       └── lfsr16.v            ← 16-bit Galois LFSR (free-running at 100 MHz)
+├── variants/
+│   ├── singleplayer/
+│   │   ├── top_fpga.v          ← SP top: pipeline + all peripherals wired up
+│   │   ├── mmio_decoder.v      ← SP: routes 0x2000–0x2018 (audio at 0x2018)
+│   │   ├── seg7_mux.v          ← SP: 8-digit TDM mux + game glyph dictionary
+│   │   ├── constraints/
+│   │   │   └── nexys_a7.xdc
+│   │   └── game_loop/
+│   │       ├── code_dino_game.c
+│   │       ├── dino_display.h
+│   │       └── dino_mmio.h
+│   └── multiplayer/
+│       ├── top_fpga.v          ← MP top: adds sw_role, pmod_tx, pmod_rx
+│       ├── mmio_decoder.v      ← MP: NET_TX(0x2018) NET_RX(0x201C), no audio
+│       ├── seg7_mux_mp.v       ← MP: adds WIN/LOSE text bank
+│       ├── constraints/
+│       │   └── nexys_a7.xdc    ← MP: adds PMOD JA pin mappings
+│       └── game_loop/
+│           ├── code_dino_game.c
+│           ├── dino_display.h
+│           └── dino_mmio.h
+├── mem_generator/              ← Software build toolchain
+│   ├── crt0.S                  ← Bare-metal startup: sets SP, jumps to main
+│   ├── Makefile
+│   └── imem_dmem/
+│       ├── bin2hex.py          ← ELF binary → Verilog $readmemh hex
+│       └── .gitkeep
+├── scripts/
+│   ├── build_nexys_a7.tcl      ← Full Vivado build (synth + impl + bitstream)
+│   └── program_nexys_a7.tcl    ← Flash bitstream to connected board
+├── tb/                         ← Testbenches
+│   ├── waveforms/              ← Simulation screenshots
+│   └── tb_*.v
+└── docs/
+    └── final_report.pdf
+```
 
 ---
 
@@ -118,239 +258,77 @@ Multiplayer — two Nexys A7 boards linked via PMOD GPIO (pulse protocol)
 
 ### Prerequisites
 
-- Vivado 2020.2 or later
-- RISC-V toolchain providing `riscv64-unknown-elf-gcc`
-- Python 3 for `bin2hex.py`
+- Vivado 2020.2 or later (tested on 2025.2)
+- `riscv64-unknown-elf-gcc` — ships with Vivado at `C:/AMDDesignTools/<ver>/gnu/riscv/nt/bin/`
+- Python 3
 
-### 1. Compile the game workload
-
-The software lives under `software/mem_generator`. The default workload is `code_dino_game`.
+### Step 1 — Compile the game
 
 ```bash
-cd software/mem_generator
-make
+cd mem_generator
+make                          # auto-detects toolchain if on PATH
+
+# Windows PowerShell (explicit toolchain path)
+make TOOLCHAIN=C:/AMDDesignTools/2025.2/gnu/riscv/nt/bin/riscv64-unknown-elf-
+
+# Multiplayer variant
+make VARIANT=multiplayer
 ```
 
-To build a different workload, pass `WORKLOAD` explicitly:
+Outputs: `mem_generator/imem_dmem/imem.hex` and `dmem.hex`
+
+### Step 2 — Build the bitstream
+
+Run from the **repository root**:
 
 ```bash
-make WORKLOAD=code_factorial
-```
+# Linux / Mac
+vivado -mode batch -source scripts/build_nexys_a7.tcl
 
-This generates `imem_dmem/imem.hex` and `imem_dmem/dmem.hex`, which Vivado loads into BRAM during synthesis.
-
-### 2. Build the FPGA bitstream
-
-From the repository root, run the Vivado batch script for the target you want:
-
-```bash
+# Windows
 C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/build_nexys_a7.tcl
 ```
 
-Use the VGA build if you want the dual-output top level instead:
+Bitstream lands at `build/vivado/trex_dino_nexys_a7.runs/impl_1/top_fpga.bit`.
+Build time: ~5–10 minutes.
+
+### Step 3 — Program the board
+
+Connect the Nexys A7 via USB-JTAG, then:
 
 ```bash
-C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/build_nexys_a7_with_vga.tcl
+vivado -mode batch -source scripts/program_nexys_a7.tcl
 ```
 
-The non-VGA flow writes its project under `build/vivado/`, and the VGA flow writes under `build/vivado_vga/`.
+### Controls
 
-### 3. Program the Nexys A7
+| Button | Action        |
+|--------|---------------|
+| BTNU   | Jump          |
+| BTNL   | Double jump   |
+| BTNC   | Reset         |
 
-After the bitstream is generated, program the board with the matching script:
-
-```bash
-C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/program_nexys_a7.tcl
-```
-
-For the VGA build, use:
-
-```bash
-C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/program_nexys_a7_with_vga.tcl
-```
-
-If you prefer the Vivado GUI, you can also open the generated project in `build/` or `build/vivado_vga/`, run Synthesis, run Implementation, and then Generate Bitstream before programming the device through Hardware Manager.
+Score displays on the 7-segment display. LEDs animate on crash. Audio plays on jump, crash, and score milestones.
 
 ---
 
-## Multiplayer Build and Run
+## Contributors
 
-The multiplayer variant enables two Nexys A7 boards to compete in Chrome Dino simultaneously, communicating via PMOD GPIO over a pulse protocol. Each board runs the same game logic but with real-time opponent state updates.
-
-### Prerequisites for Multiplayer
-
-- Two Nexys A7-100T boards
-- PMOD connector cable (connects GPIO between boards, implements hand-shake protocol)
-- All single-player prerequisites (Vivado, RISC-V toolchain, Python 3)
-
-### 1. Compile the multiplayer game workload
-
-The multiplayer software lives under `Multiplayer/software/mem_generator`. The build process is identical to single-player:
-
-```bash
-cd Multiplayer/software/mem_generator
-make
-```
-
-Or specify a workload explicitly:
-
-```bash
-make WORKLOAD=code_dino_game
-```
-
-This generates `imem_dmem/imem.hex` and `imem_dmem/dmem.hex` for BRAM initialization.
-
-### 2. Build the multiplayer FPGA bitstream
-
-The multiplayer hardware variant uses:
-- Top module: `Multiplayer/src/3-stage-pipeline/top_fpga.v`
-- Board constraints: `Multiplayer/constraints/nexys_a7.xdc`
-- Peripheral modules: `Multiplayer/src/*.v`
-
-**Option A: Using Vivado GUI** (recommended for first-time multiplayer setup)
-
-1. Open Vivado
-2. Create a new project:
-   - Project name: `trex_dino_nexys_a7_mp`
-   - Location: `<repo>/build/vivado_multiplayer/`
-   - Part: `xc7a100tcsg324-1`
-3. Add source files:
-   - Add all Verilog files from `Multiplayer/src/3-stage-pipeline/` and `Multiplayer/src/`
-   - Add constraint file: `Multiplayer/constraints/nexys_a7.xdc`
-   - Add memory files: `Multiplayer/software/mem_generator/imem_dmem/imem.hex` and `dmem.hex`
-4. Set `Multiplayer/src/3-stage-pipeline/top_fpga.v` as the top module
-5. Run Synthesis → Implementation → Generate Bitstream
-
-**Option B: Using Vivado batch mode**
-
-Create a Vivado TCL script `scripts/build_nexys_a7_multiplayer.tcl` (template provided below), then run:
-
-```bash
-C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/build_nexys_a7_multiplayer.tcl
-```
-
-**TCL Script Template** (`scripts/build_nexys_a7_multiplayer.tcl`):
-
-```tcl
-# Build the Project T-Rex Multiplayer bitstream for Nexys A7-100T.
-#
-# Run from the repository root:
-#   C:/AMDDesignTools/2025.2/Vivado/bin/vivado.bat -mode batch -source scripts/build_nexys_a7_multiplayer.tcl
-
-set script_dir [file dirname [file normalize [info script]]]
-set repo_root  [file normalize [file join $script_dir ".."]]
-set build_dir  [file join $repo_root "build" "vivado_multiplayer"]
-set proj_name  "trex_dino_nexys_a7_mp"
-set part_name  "xc7a100tcsg324-1"
-
-cd $repo_root
-file mkdir $build_dir
-
-create_project -force $proj_name $build_dir -part $part_name
-set_property target_language Verilog [current_project]
-set_property simulator_language Verilog [current_project]
-set_property source_mgmt_mode None [current_project]
-
-set mp_src_dir [file join $repo_root "Multiplayer" "src"]
-set mp_pipe_dir [file join $mp_src_dir "3-stage-pipeline"]
-
-add_files -fileset sources_1 -norecurse [list \
-    [file join $mp_pipe_dir "top_fpga.v"] \
-    [file join $mp_pipe_dir "pipeline.v"] \
-    [file join $mp_pipe_dir "memory.v"] \
-    [file join $mp_src_dir "audio_driver.v"] \
-    [file join $mp_src_dir "math_coproc.v"] \
-    [file join $mp_src_dir "mmio_decoder.v"] \
-    [file join $mp_src_dir "debouncer.v"] \
-    [file join $mp_src_dir "lfsr16.v"] \
-    [file join $mp_src_dir "led_ctrl.v"] \
-    [file join $mp_src_dir "seg7_mux.v"] \
-]
-
-set_property include_dirs [list $mp_pipe_dir] [get_filesets sources_1]
-
-set imem_hex [file join $repo_root "Multiplayer" "software" "mem_generator" "imem_dmem" "imem.hex"]
-set dmem_hex [file join $repo_root "Multiplayer" "software" "mem_generator" "imem_dmem" "dmem.hex"]
-add_files -fileset sources_1 -norecurse [list $imem_hex $dmem_hex]
-
-# Copy BRAM init files to synthesis directory
-set synth_dir [file join $build_dir "$proj_name.runs" "synth_1"]
-file mkdir $synth_dir
-file copy -force $imem_hex [file join $synth_dir "imem.hex"]
-file copy -force $dmem_hex [file join $synth_dir "dmem.hex"]
-
-add_files -fileset constrs_1 -norecurse [list [file join $repo_root "Multiplayer" "constraints" "nexys_a7.xdc"]]
-
-set_property target_language Verilog [current_project]
-set_property simulator_language Verilog [current_project]
-set_property source_mgmt_mode None [current_project]
-
-update_compile_order -fileset sources_1
-update_compile_order -fileset constrs_1
-
-synth_design -top top_fpga -part $part_name
-
-opt_design
-place_design
-route_design
-
-report_utilization -file [file join $build_dir "utilization.txt"]
-write_bitstream -force [file join $build_dir "$proj_name.bit"]
-
-puts "Bitstream generated: [file join $build_dir "$proj_name.bit"]"
-```
-
-### 3. Program both Nexys A7 boards
-
-After generating the bitstream, program both boards using Vivado Hardware Manager:
-
-1. Connect the first Nexys A7 to your computer via USB
-2. Open Vivado → Hardware Manager → Open Target → Auto Connect
-3. Select the connected board → Program Device → Select `trex_dino_nexys_a7_mp.bit`
-4. Repeat for the second board (may need to use a USB hub or program sequentially)
-
-Alternatively, create a programming script `scripts/program_nexys_a7_multiplayer.tcl` following the same pattern as the single-player version in `scripts/program_nexys_a7.tcl`.
-
-### 4. Connect the boards via PMOD GPIO
-
-- Use a PMOD connector cable to link GPIO pins between the two boards
-- Consult `Multiplayer/constraints/nexys_a7.xdc` to identify which PMOD pins implement the pulse protocol
-- The boards will auto-detect each other and begin synchronization once both are powered on and programmed
-
-### Troubleshooting Multiplayer
-
-- **Boards not synchronizing**: Check PMOD cable connections and verify both boards are programmed with the same bitstream
-- **Score or position misalignment**: Pulse protocol timing may be off; verify clock divider settings match between both boards (see Clock Configuration section below)
-- **One board crashing**: Check MMIO collision detection logic; obstacles may spawn at incompatible positions on different boards
-
-### Notes
-
-- Target board: Nexys A7-100T (`xc7a100tcsg324-1`)
-- The CPU game path uses `src/top_fpga.v`; the VGA build uses `src/top_fpga_with_vga.v`
-- If you change the C workload, rebuild `imem.hex` and `dmem.hex` before rerunning Vivado
-- For single-player builds: use `src/` and `constraints/` (standard paths)
-- For multiplayer builds: use `Multiplayer/src/` and `Multiplayer/constraints/` with `Multiplayer/software/mem_generator/` for hex files
-
-Expected resource utilization (Nexys A7-100T):
-
-| Resource | Available | Estimated | Utilization |
-| -------- | --------- | --------- | ----------- |
-| BRAM     | 135       | ~8        | ~6%         |
-| DSP      | 240       | ~4        | ~2%         |
-| LUT      | 63,400    | ~3,800    | ~6%         |
-| FF       | 126,800   | ~4,500    | ~4%         |
+| GitHub | Contributions |
+|--------|---------------|
+| [@tscube1130](https://github.com/tscube1130) | 3-stage pipeline, math_coproc (MUL/MAC/DIV FSM), instruction rescue buffer, pipeline freeze logic, gameplay fixes, multiplayer PMOD protocol, MP top + mmio_decoder, repo restructure |
+| [@ajcoder13](https://github.com/ajcoder13) | All 5 MMIO peripherals RTL (debouncer, LFSR, seg7_mux, LED ctrl, audio driver) + testbenches |
+| [@sanjeebani14](https://github.com/sanjeebani14) | Bare-metal C game loop, software build toolchain (Makefile, bin2hex, crt0.S), VGA hardware |
+| [@ananya](https://github.com/ananya) | Audio driver integration, top_fpga wiring, seg7 game glyph encoding, mmio_decoder wstrb fixes |
+| [@surbhi](https://github.com/surbhi) | XDC constraints, Vivado project setup, top-level integration testbench, FPGA board validation |
 
 ---
 
-## Clock Configuration
+## Course
 
-CPU pipeline runs on a divided clock (inline in top_fpga.v). Change DIV_COUNT to adjust speed:
-
-| DIV_COUNT  | CPU Clock | Use Case              |
-| ---------- | --------- | --------------------- |
-| 50_000_000 | 1 Hz      | Visible debug (slow)  |
-| 500_000    | 100 Hz    | Fast debug            |
-| 5_000      | 10 kHz    | Functional test       |
-| 50         | 1 MHz     | Near-real performance |
+**CS224 — Computer Architecture**
+Nexys A7-100T (`xc7a100tcsg324-1`) · Xilinx Artix-7
 
 ---
+
+*Built from RTL up. No shortcuts.*

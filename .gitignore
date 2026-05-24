@@ -7,6 +7,10 @@ dfx_runtime.txt
 hs_err_pid*.log
 hs_err_pid*.dmp
 
+*.elf
+*.bin
+*.hex
+
 # Vivado/XSim simulation artifacts
 .Xil/
 xsim.dir/
